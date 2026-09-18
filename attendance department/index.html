@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070b14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="StaffTrack">
+<title>StaffTrack</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/logo.png">
+<link rel="apple-touch-icon" href="icons/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="ambient" aria-hidden="true">
+  <span class="orb orb-a"></span>
+  <span class="orb orb-b"></span>
+  <span class="grid"></span>
+</div>
+
+<div class="app">
+  <div class="stage">
+  <section class="hero-clock" aria-live="polite">
+    <div class="brand">
+      <img class="brand-mark" src="icons/logo.png" alt="">
+      <div>
+        <p class="eyebrow">BSH</p>
+        <h1>StaffTrack</h1>
+      </div>
+    </div>
+    <div class="clock-ring">
+      <div class="clock-display" id="clockTime">--:--:--</div>
+      <p class="clock-date" id="clockDate">-</p>
+    </div>
+  </section>
+
+  <main class="workspace">
+    <div class="meta-chips">
+      <span class="chip">Shift 8:30 AM</span>
+      <span class="chip chip-live"><span class="pulse"></span> Live</span>
+      <a class="chip chip-link" href="/api/export.xlsx">Download Excel</a>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Attendance views">
+      <button class="tab-btn active" data-tab="checkin" type="button" role="tab" aria-selected="true">
+        <span class="tab-long">Check in / out</span>
+        <span class="tab-short">Punch</span>
+      </button>
+      <button class="tab-btn" data-tab="summary" type="button" role="tab" aria-selected="false">
+        <span class="tab-long">Monthly summary</span>
+        <span class="tab-short">Summary</span>
+      </button>
+    </div>
+
+    <div class="panel" id="checkinPanel">
+      <section class="card">
+        <div class="card-head">
+          <h2>Record attendance</h2>
+          <p>Choose your name, then punch in or out.</p>
+        </div>
+
+        <label class="field-label" for="comboSearch">Select name</label>
+        <div class="combo" id="employeeCombo">
+          <div class="combo-backdrop" id="comboBackdrop" hidden></div>
+          <select class="sr-only" id="employeeSelect" tabindex="-1" aria-hidden="true"></select>
+          <div class="combo-trigger" id="comboTrigger" aria-expanded="false">
+            <span class="avatar" id="selectedAvatar" hidden>?</span>
+            <input class="combo-input" id="comboSearch" type="text" placeholder="Type or select name" autocomplete="off" spellcheck="false" aria-autocomplete="list">
+            <button class="combo-chevron-btn" id="comboChevron" type="button" aria-label="Open name list">
+              <svg class="chevron" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M5.5 7.5 10 12l4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="combo-menu" id="comboMenu" hidden>
+            <div class="combo-list" id="comboList" role="listbox" aria-label="Employees"></div>
+          </div>
+        </div>
+
+        <div class="punch-buttons">
+          <button class="punch-btn in" id="checkInBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 7V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M15 12H3m0 0 4-4M3 12l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Check in
+          </button>
+          <button class="punch-btn out" id="checkOutBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M9 12h12m0 0-4-4m4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Check out
+          </button>
+        </div>
+        <div class="status-line" id="statusLine"></div>
+      </section>
+
+      <section class="feed">
+        <div class="feed-head">
+          <h2>Today’s punches</h2>
+          <span class="count-pill" id="feedCount">0</span>
+        </div>
+        <div id="feedList">
+          <div class="empty-note">
+            <span class="spinner"></span>
+            Loading punches…
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="panel is-hidden" id="summaryPanel">
+      <section class="card summary-card">
+        <div class="card-head summary-head">
+          <div>
+            <h2>Monthly summary</h2>
+            <p>Pick a month. Download the Excel at month end.</p>
+          </div>
+          <div class="summary-actions">
+            <label class="sr-only" for="summaryMonthSelect">Month</label>
+            <select id="summaryMonthSelect"></select>
+            <a class="chip chip-link" id="summaryDownload" href="/api/export-summary.xlsx">Download summary</a>
+          </div>
+        </div>
+        <p class="summary-month-label" id="summaryMonth">This month</p>
+        <div class="kpi-row" id="summaryStats"></div>
+        <div class="table-wrap">
+          <table class="summary-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th class="num">Present</th>
+                <th class="num">Late</th>
+                <th class="num">Late min</th>
+              </tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+  </div>
+</div>
+<script src="js/app.js"></script>
+<script src="js/pwa.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+data/tracker.db
+data/attendance.xlsx
+data/summary-*.xlsx
+data/.session-secret
+.DS_Store
+.env
+.env.*
