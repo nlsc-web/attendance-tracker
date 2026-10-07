@@ -73,4 +73,4 @@ npm start
 
 Open http://localhost:5700
 
-Or double-click `start-kiosk.bat`. Local mode uses SQLite in `data/tracker.db` (no `DATABASE_URL`).
+Local mode uses SQLite in `data/tracker.db` (no `DATABASE_URL`). For the office kiosk, double-click `start-kiosk.bat` — it opens the live app at [https://attendance-tracker-d48e.onrender.com/](https://attendance-tracker-d48e.onrender.com/).

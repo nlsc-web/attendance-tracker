@@ -75,6 +75,50 @@ function lateInfo(timeStr) {
   return { late, lateMinutes };
 }
 
+function parseDateKey(raw) {
+  const date = String(raw || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const [year, month, day] = date.split('-').map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() !== month - 1 ||
+    utc.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function parseClockTime(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3] || 0);
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  return `${pad(hour)}:${pad(minute)}:${pad(second)}`;
+}
+
+function shiftDateKey(date, days) {
+  const [year, month, day] = date.split('-').map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day + days));
+  return `${utc.getUTCFullYear()}-${pad(utc.getUTCMonth() + 1)}-${pad(utc.getUTCDate())}`;
+}
+
+function timeToSeconds(timeStr) {
+  const [h, m, s] = String(timeStr).split(':').map((x) => Number(x) || 0);
+  return h * 3600 + m * 60 + s;
+}
+
+async function afterPunch(saved, names, { inChanged, outChanged }) {
+  await excel.rebuild(await db.getAllPunches(), names);
+  if (inChanged) await sheet.syncCheckIn(saved, names);
+  if (outChanged) await sheet.syncCheckOut(saved, names);
+}
+
 function newId() {
   return 'p' + Date.now() + Math.random().toString(36).slice(2, 7);
 }
@@ -146,6 +190,27 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/correction/login', asyncHandler(async (req, res) => {
+  const name = auth.correctorName();
+  const pin = String((req.body || {}).pin || '');
+  if (!pin) return res.status(400).json({ error: 'PIN is required' });
+  if (auth.tooManyFails(req, name)) {
+    return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  }
+  const user = await auth.login(name, pin);
+  if (!user || !user.canCorrect) {
+    auth.recordFail(req, name);
+    return res.status(401).json({ error: 'Wrong PIN. Try again.' });
+  }
+  auth.clearFails(req, name);
+  const ttl = auth.CORRECTION_TTL_MS;
+  res.setHeader(
+    'Set-Cookie',
+    auth.cookieHeader(auth.createSession(user, ttl), ttl / 1000)
+  );
+  res.json(user);
+}));
+
 function staffNameFromBody(req) {
   const name = String((req.body || {}).name || '').trim().replace(/\s+/g, ' ');
   if (name.length < 2 || name.length > 48) return null;
@@ -185,8 +250,7 @@ app.post('/api/punches/checkin', asyncHandler(async (req, res) => {
       ? await db.updatePunch(punch)
       : await db.insertPunch(punch);
     const names = auth.entryNames();
-    await excel.rebuild(await db.getAllPunches(), names);
-    await sheet.syncCheckIn(saved, names);
+    await afterPunch(saved, names, { inChanged: true, outChanged: false });
     res.status(existing ? 200 : 201).json(saved);
   } catch (err) {
     if (isUniqueError(err)) {
@@ -214,9 +278,78 @@ app.post('/api/punches/checkout', asyncHandler(async (req, res) => {
     updatedAt: new Date().toISOString()
   });
   const names = auth.entryNames();
-  await excel.rebuild(await db.getAllPunches(), names);
-  await sheet.syncCheckOut(saved, names);
+  await afterPunch(saved, names, { inChanged: false, outChanged: true });
   res.json(saved);
+}));
+
+app.post('/api/punches/missed', auth.requireCorrect, asyncHandler(async (req, res) => {
+  const name = staffNameFromBody(req);
+  if (!name) return res.status(400).json({ error: 'Select a valid name.' });
+  const date = parseDateKey((req.body || {}).date);
+  if (!date) return res.status(400).json({ error: 'Pick a valid date.' });
+  const today = todayKey();
+  if (date > today) return res.status(400).json({ error: 'Cannot mark a future date.' });
+  if (date < shiftDateKey(today, -90)) {
+    return res.status(400).json({ error: 'Can only backfill the last 90 days.' });
+  }
+
+  const inTime = parseClockTime((req.body || {}).inTime);
+  const outTime = parseClockTime((req.body || {}).outTime);
+  if (inTime === null) return res.status(400).json({ error: 'Enter a valid check-in time.' });
+  if (outTime === null) return res.status(400).json({ error: 'Enter a valid check-out time.' });
+  if (!inTime && !outTime) {
+    return res.status(400).json({ error: 'Enter a check-in or check-out time.' });
+  }
+  if (inTime && outTime && timeToSeconds(outTime) < timeToSeconds(inTime)) {
+    return res.status(400).json({ error: 'Check-out cannot be before check-in.' });
+  }
+
+  const existing = await db.getPunchByDateName(date, name);
+  if (!existing && !inTime) {
+    return res.status(400).json({ error: 'Enter the check-in time for that day.' });
+  }
+  if (
+    existing &&
+    existing.inTime &&
+    inTime &&
+    String(existing.inTime).slice(0, 5) !== String(inTime).slice(0, 5)
+  ) {
+    return res.status(409).json({ error: 'Already checked in that day.' });
+  }
+  if (existing && existing.outTime && outTime) {
+    return res.status(409).json({ error: 'Already checked out that day.' });
+  }
+
+  const nextIn = (existing && existing.inTime) || inTime;
+  const nextOut = outTime || (existing ? existing.outTime : '') || '';
+  const { late, lateMinutes } = lateInfo(nextIn);
+  const punch = {
+    id: existing ? existing.id : newId(),
+    date,
+    name,
+    inTime: nextIn,
+    outTime: nextOut,
+    late,
+    lateMinutes,
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    const saved = existing
+      ? await db.updatePunch(punch)
+      : await db.insertPunch(punch);
+    const names = auth.entryNames();
+    await afterPunch(saved, names, {
+      inChanged: !existing || !existing.inTime,
+      outChanged: Boolean(outTime)
+    });
+    res.status(existing ? 200 : 201).json(saved);
+  } catch (err) {
+    if (isUniqueError(err)) {
+      return res.status(409).json({ error: 'Already marked for that day.' });
+    }
+    throw err;
+  }
 }));
 
 app.get('/api/summary', asyncHandler(async (req, res) => {

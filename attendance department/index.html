@@ -59,8 +59,16 @@
     <div class="panel" id="checkinPanel">
       <section class="card">
         <div class="card-head">
-          <h2>Record attendance</h2>
-          <p>Choose your name, then punch in or out.</p>
+          <div>
+            <h2>Record attendance</h2>
+            <p>Choose your name, then punch in or out.</p>
+          </div>
+          <button class="correction-lock" id="correctionLock" type="button" aria-label="Office login" title="Office login">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 10V8a4 4 0 0 1 8 0v2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <rect x="6" y="10" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+          </button>
         </div>
 
         <label class="field-label" for="comboSearch">Select name</label>
@@ -98,6 +106,37 @@
           </button>
         </div>
         <div class="status-line" id="statusLine"></div>
+
+        <div class="missed-panel" id="correctionLogin" hidden>
+          <p class="missed-hint">Office login. Enter the PIN to add a missed punch.</p>
+          <label class="missed-field">
+            <span>PIN</span>
+            <input id="correctionPin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••">
+          </label>
+          <button class="punch-btn missed-save" id="correctionLoginBtn" type="button">Unlock</button>
+        </div>
+
+        <div class="missed-panel" id="missedPanel" hidden>
+          <div class="missed-toolbar">
+            <p class="missed-hint" id="correctionWho">Add a missed punch for any staff member.</p>
+            <button class="missed-done" id="correctionLogout" type="button">Done</button>
+          </div>
+          <div class="missed-grid">
+            <label class="missed-field">
+              <span>Date</span>
+              <input id="missedDate" type="date" required>
+            </label>
+            <label class="missed-field">
+              <span>Check in</span>
+              <input id="missedIn" type="time" step="60">
+            </label>
+            <label class="missed-field">
+              <span>Check out</span>
+              <input id="missedOut" type="time" step="60">
+            </label>
+          </div>
+          <button class="punch-btn missed-save" id="missedSaveBtn" type="button">Save missed punch</button>
+        </div>
       </section>
 
       <section class="feed">

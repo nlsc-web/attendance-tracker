@@ -11,8 +11,11 @@ const FAIL_WINDOW_MS = 15 * 60 * 1000;
 // Default PIN is 1234 for every account. Replace per person with:
 //   node scripts/hash-pin.js <new-pin>
 const PIN_HASH = '$2b$10$tnO7jlwuRW6vAXF59jBYz.rki/Yi4vU5GKvLzXKGp6CbRaOZ.N90m';
+const CORRECTOR_PIN_HASH = '$2b$10$.luY1JT6ua5B0SUXqngyJ.HJOkK.3yyciywAulEVAWWeVBL1.mmqe'; // 3030
 
 const VIEWERS = ['Mrs.Lakmali', 'Ms.Sajini'];
+const CORRECTORS = ['Mrs.Lakmali'];
+const CORRECTION_TTL_MS = 30 * 60 * 1000;
 
 const STAFF = [
   'Mrs.Nirmala',
@@ -40,7 +43,11 @@ const STAFF = [
 ];
 
 const USERS = [
-  ...VIEWERS.map((name) => ({ name, role: 'viewer', pinHash: PIN_HASH })),
+  ...VIEWERS.map((name) => ({
+    name,
+    role: 'viewer',
+    pinHash: CORRECTORS.includes(name) ? CORRECTOR_PIN_HASH : PIN_HASH
+  })),
   ...STAFF.map((name) => ({ name, role: 'entry', pinHash: PIN_HASH }))
 ];
 
@@ -82,6 +89,19 @@ function entryNames() {
   return USERS.filter((u) => u.role === 'entry').map((u) => u.name);
 }
 
+function canCorrect(user) {
+  return Boolean(user && CORRECTORS.includes(user.name));
+}
+
+function correctorName() {
+  return CORRECTORS[0];
+}
+
+function toPublic(user) {
+  if (!user) return null;
+  return { name: user.name, role: user.role, canCorrect: canCorrect(user) };
+}
+
 function parseCookies(req) {
   const header = req.headers.cookie || '';
   const out = {};
@@ -117,14 +137,16 @@ function verifyToken(token) {
     if (!payload || payload.exp < Date.now()) return null;
     const user = findUser(payload.n);
     if (!user) return null;
-    return { name: user.name, role: user.role };
+    return toPublic(user);
   } catch {
     return null;
   }
 }
 
-function cookieHeader(token) {
-  const maxAge = SESSION_DAYS * 24 * 60 * 60;
+function cookieHeader(token, maxAgeSeconds) {
+  const maxAge = Number(maxAgeSeconds) > 0
+    ? Math.floor(Number(maxAgeSeconds))
+    : SESSION_DAYS * 24 * 60 * 60;
   const parts = [
     `${COOKIE}=${encodeURIComponent(token)}`,
     'HttpOnly',
@@ -183,13 +205,14 @@ async function login(name, pin) {
     ok = false;
   }
   if (!user || !ok) return null;
-  return { name: user.name, role: user.role };
+  return toPublic(user);
 }
 
-function createSession(user) {
+function createSession(user, ttlMs) {
+  const ttl = Number(ttlMs) > 0 ? Number(ttlMs) : SESSION_DAYS * 24 * 60 * 60 * 1000;
   return sign({
     n: user.name,
-    exp: Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000
+    exp: Date.now() + ttl
   });
 }
 
@@ -211,9 +234,23 @@ function requireEntry(req, res, next) {
   next();
 }
 
+function requireCorrect(req, res, next) {
+  const user = readSession(req);
+  if (!user) return res.status(401).json({ error: 'Office login required' });
+  if (!canCorrect(user)) {
+    return res.status(403).json({ error: 'Only the office login can add missed punches.' });
+  }
+  req.user = user;
+  next();
+}
+
 module.exports = {
   publicUsers,
   entryNames,
+  canCorrect,
+  correctorName,
+  toPublic,
+  CORRECTION_TTL_MS,
   login,
   createSession,
   readSession,
@@ -223,5 +260,6 @@ module.exports = {
   recordFail,
   clearFails,
   requireAuth,
-  requireEntry
+  requireEntry,
+  requireCorrect
 };

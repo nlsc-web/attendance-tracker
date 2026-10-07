@@ -27,11 +27,34 @@
   const selectedAvatar = document.getElementById('selectedAvatar');
   const comboBackdrop = document.getElementById('comboBackdrop');
   const comboChevron = document.getElementById('comboChevron');
+  const correctionLock = document.getElementById('correctionLock');
+  const correctionLogin = document.getElementById('correctionLogin');
+  const correctionPin = document.getElementById('correctionPin');
+  const correctionLoginBtn = document.getElementById('correctionLoginBtn');
+  const correctionLogout = document.getElementById('correctionLogout');
+  const correctionWho = document.getElementById('correctionWho');
+  const missedPanel = document.getElementById('missedPanel');
+  const missedDate = document.getElementById('missedDate');
+  const missedIn = document.getElementById('missedIn');
+  const missedOut = document.getElementById('missedOut');
+  const missedSaveBtn = document.getElementById('missedSaveBtn');
 
   let employeeNames = EMPLOYEES.slice();
   let highlightIndex = 0;
 
   function pad(n) { return n.toString().padStart(2, '0'); }
+  function localDateKey(d) {
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  function setupMissedDates() {
+    if (!missedDate) return;
+    const today = localDateKey(new Date());
+    const min = new Date();
+    min.setDate(min.getDate() - 90);
+    missedDate.max = today;
+    missedDate.min = localDateKey(min);
+    if (!missedDate.value) missedDate.value = today;
+  }
   function formatLate(minutes) {
     const total = Math.max(0, Math.round(Number(minutes) || 0));
     if (!total) return '0m';
@@ -350,7 +373,7 @@
   }
 
   async function withBusy(button, fn) {
-    const buttons = [checkInBtn, checkOutBtn];
+    const buttons = [checkInBtn, checkOutBtn, missedSaveBtn, correctionLoginBtn].filter(Boolean);
     buttons.forEach((btn) => { btn.disabled = true; });
     button.classList.add('is-busy');
     try {
@@ -411,6 +434,116 @@
 
   checkInBtn.addEventListener('click', handleCheckIn);
   checkOutBtn.addEventListener('click', handleCheckOut);
+
+  function setCorrectionView(mode, user) {
+    const unlocked = mode === 'unlocked';
+    const pinOpen = mode === 'pin';
+    if (correctionLogin) correctionLogin.hidden = !pinOpen;
+    if (missedPanel) missedPanel.hidden = !unlocked;
+    if (correctionLock) {
+      correctionLock.hidden = unlocked;
+      correctionLock.setAttribute('aria-expanded', pinOpen ? 'true' : 'false');
+    }
+    if (unlocked) {
+      setupMissedDates();
+      if (correctionWho) {
+        correctionWho.textContent = user && user.name
+          ? 'Signed in as ' + user.name + '. Add a missed punch for any staff member.'
+          : 'Add a missed punch for any staff member.';
+      }
+    }
+  }
+
+  async function refreshCorrection() {
+    try {
+      const me = await apiGet('/api/me');
+      setCorrectionView(me && me.canCorrect ? 'unlocked' : 'locked', me);
+    } catch (e) {
+      setCorrectionView('locked');
+    }
+  }
+
+  async function handleCorrectionLogin() {
+    const pin = correctionPin ? correctionPin.value.trim() : '';
+    if (!pin) {
+      statusLine.textContent = 'Enter the office PIN.';
+      statusLine.className = 'status-line late';
+      return;
+    }
+    await withBusy(correctionLoginBtn, async () => {
+      try {
+        const me = await apiPost('/api/correction/login', { pin });
+        if (correctionPin) correctionPin.value = '';
+        setCorrectionView('unlocked', me);
+        statusLine.textContent = 'Office login unlocked. Add the missed punch below.';
+        statusLine.className = 'status-line ontime';
+      } catch (e) {
+        statusLine.textContent = e.message || 'Wrong PIN.';
+        statusLine.className = 'status-line late';
+      }
+    });
+  }
+
+  async function handleCorrectionLogout() {
+    try {
+      await apiPost('/api/logout', {});
+    } catch (e) { /* ignore */ }
+    if (correctionPin) correctionPin.value = '';
+    setCorrectionView('locked');
+    statusLine.textContent = '';
+    statusLine.className = 'status-line';
+  }
+
+  if (correctionLock) {
+    correctionLock.addEventListener('click', () => {
+      const open = correctionLogin && correctionLogin.hidden;
+      setCorrectionView(open ? 'pin' : 'locked');
+      if (open && correctionPin) correctionPin.focus();
+    });
+  }
+  if (correctionLoginBtn) correctionLoginBtn.addEventListener('click', handleCorrectionLogin);
+  if (correctionLogout) correctionLogout.addEventListener('click', handleCorrectionLogout);
+  if (correctionPin) {
+    correctionPin.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleCorrectionLogin();
+      }
+    });
+  }
+
+  async function handleMissedSave() {
+    const name = selectedName();
+    if (!name) { statusLine.textContent = 'Select your name first.'; return; }
+    if (employeeSelect.value !== name) chooseName(name);
+    const date = missedDate && missedDate.value;
+    const inTime = missedIn && missedIn.value;
+    const outTime = missedOut && missedOut.value;
+    if (!date) { statusLine.textContent = 'Pick the missed date.'; return; }
+    if (!inTime && !outTime) {
+      statusLine.textContent = 'Enter a check-in or check-out time.';
+      return;
+    }
+    await withBusy(missedSaveBtn, async () => {
+      try {
+        const saved = await apiPost('/api/punches/missed', { name, date, inTime, outTime });
+        const bits = [];
+        if (saved.inTime) bits.push('IN ' + saved.inTime.slice(0, 5));
+        if (saved.outTime) bits.push('OUT ' + saved.outTime.slice(0, 5));
+        statusLine.textContent = `Saved ${date} for ${saved.name} — ${bits.join(' · ')}.`;
+        statusLine.className = 'status-line ' + (saved.late ? 'late' : 'ontime');
+        if (missedIn) missedIn.value = '';
+        if (missedOut) missedOut.value = '';
+        clearSelection();
+        refreshFeed();
+      } catch (e) {
+        statusLine.textContent = e.message || 'Could not save missed punch.';
+        statusLine.className = 'status-line late';
+        if (e.status === 401 || e.status === 403) setCorrectionView('pin');
+      }
+    });
+  }
+  if (missedSaveBtn) missedSaveBtn.addEventListener('click', handleMissedSave);
 
   comboSearch.addEventListener('focus', () => setComboOpen(true));
   comboSearch.addEventListener('input', () => {
@@ -506,6 +639,7 @@
       fillEmployees(EMPLOYEES);
     }
     refreshFeed();
+    refreshCorrection();
   })();
 
   if (summaryMonthSelect) {
