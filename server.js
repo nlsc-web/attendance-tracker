@@ -95,9 +95,26 @@ app.get('/api/health', asyncHandler(async (req, res) => {
   });
 }));
 
-app.get('/api/users', (req, res) => {
-  res.json(auth.publicUsers());
-});
+app.get('/api/users', asyncHandler(async (req, res) => {
+  const hidden = new Set(
+    (await db.listHiddenStaff()).map((name) => String(name).toLowerCase())
+  );
+  res.json(auth.publicUsers().filter((user) => !hidden.has(String(user.name).toLowerCase())));
+}));
+
+app.post('/api/users', asyncHandler(async (req, res) => {
+  const name = staffNameFromBody(req);
+  if (!name) return res.status(400).json({ error: 'Select a valid name.' });
+  await db.unhideStaff(name);
+  res.json({ ok: true, name });
+}));
+
+app.delete('/api/users', asyncHandler(async (req, res) => {
+  const name = staffNameFromBody(req);
+  if (!name) return res.status(400).json({ error: 'Select a valid name.' });
+  await db.hideStaff(name);
+  res.json({ ok: true, name });
+}));
 
 app.get('/api/me', (req, res) => {
   const user = auth.readSession(req);
@@ -167,8 +184,9 @@ app.post('/api/punches/checkin', asyncHandler(async (req, res) => {
     const saved = existing
       ? await db.updatePunch(punch)
       : await db.insertPunch(punch);
-    await excel.rebuild(await db.getAllPunches(), auth.entryNames());
-    await sheet.syncCheckIn(saved);
+    const names = auth.entryNames();
+    await excel.rebuild(await db.getAllPunches(), names);
+    await sheet.syncCheckIn(saved, names);
     res.status(existing ? 200 : 201).json(saved);
   } catch (err) {
     if (isUniqueError(err)) {
@@ -195,8 +213,9 @@ app.post('/api/punches/checkout', asyncHandler(async (req, res) => {
     outTime: timeLabel(),
     updatedAt: new Date().toISOString()
   });
-  await excel.rebuild(await db.getAllPunches(), auth.entryNames());
-  await sheet.syncCheckOut(saved);
+  const names = auth.entryNames();
+  await excel.rebuild(await db.getAllPunches(), names);
+  await sheet.syncCheckOut(saved, names);
   res.json(saved);
 }));
 
@@ -255,6 +274,9 @@ app.use((err, req, res, next) => {
 
 async function start() {
   await db.ready();
+  excel.rebuild(await db.getAllPunches(), auth.entryNames()).catch((err) => {
+    console.error('Initial Excel build failed:', err.message);
+  });
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Attendance tracker running at http://localhost:${PORT}`);
     console.log(`Excel workbook: ${excel.filePath()}`);

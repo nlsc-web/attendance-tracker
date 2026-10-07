@@ -35,16 +35,59 @@ const OUT_FILL = {
 const HEADER_FONT = { bold: true, color: { argb: 'FF1B2430' } };
 const TITLE_FONT = { bold: true, size: 14, color: { argb: 'FF1B2430' } };
 
-function filePath() {
+function dataDir() {
   const dir = process.env.DATA_DIR
     ? path.resolve(process.env.DATA_DIR)
     : path.join(__dirname, 'data');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, 'attendance.xlsx');
+  return dir;
+}
+
+function filePath() {
+  return path.join(dataDir(), 'attendance.xlsx');
+}
+
+function syncCopyPath() {
+  const extra = String(process.env.EXCEL_SYNC_PATH || '').trim();
+  if (extra) return path.resolve(extra);
+  return path.join(__dirname, 'StaffTrack-Attendance.xlsx');
+}
+
+async function saveWorkbook(wb, target) {
+  const tmp = `${target}.${process.pid}.tmp`;
+  await wb.xlsx.writeFile(tmp);
+  try {
+    fs.copyFileSync(tmp, target);
+    fs.unlinkSync(tmp);
+  } catch (err) {
+    console.error('Excel file busy or locked. Latest copy:', tmp, err.message);
+  }
+  if (target === filePath()) {
+    const extra = syncCopyPath();
+    if (extra && extra !== target) {
+      try {
+        const source = fs.existsSync(target) ? target : tmp;
+        if (fs.existsSync(source)) fs.copyFileSync(source, extra);
+      } catch (err) {
+        console.error('Excel sync copy failed:', err.message);
+      }
+    }
+  }
+  return fs.existsSync(target) ? target : tmp;
 }
 
 function pad(n) {
   return String(n).padStart(2, '0');
+}
+
+function formatLate(minutes) {
+  const total = Math.max(0, Math.round(Number(minutes) || 0));
+  if (!total) return '';
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (hours && mins) return `${hours}h ${mins}m`;
+  if (hours) return `${hours}h`;
+  return `${mins}m`;
 }
 
 function currentMonthPrefix() {
@@ -157,7 +200,7 @@ function addMonthSheet(wb, prefix, punches, names) {
     ws.getColumn(outCol).width = 9;
   }
 
-  for (const [col, label] of [[presentCol, 'Present'], [lateCol, 'Late'], [lateMinCol, 'Late min']]) {
+  for (const [col, label] of [[presentCol, 'Present'], [lateCol, 'Late'], [lateMinCol, 'Late by']]) {
     ws.mergeCells(2, col, 3, col);
     const cell = ws.getCell(2, col);
     cell.value = label;
@@ -171,7 +214,7 @@ function addMonthSheet(wb, prefix, punches, names) {
   ws.getColumn(1).width = 24;
   ws.getColumn(presentCol).width = 11;
   ws.getColumn(lateCol).width = 10;
-  ws.getColumn(lateMinCol).width = 11;
+  ws.getColumn(lateMinCol).width = 12;
 
   staffList(punches, names).forEach((name, index) => {
     const rowNumber = 4 + index;
@@ -216,17 +259,13 @@ function addMonthSheet(wb, prefix, punches, names) {
 
     row.getCell(presentCol).value = present;
     row.getCell(lateCol).value = late;
-    row.getCell(lateMinCol).value = lateMinutes;
+    row.getCell(lateMinCol).value = formatLate(lateMinutes);
     row.getCell(lateCol).font = late ? { color: { argb: 'FF7A2221' }, bold: true } : undefined;
   });
 }
 
 function summaryFilePath(prefix) {
-  const dir = process.env.DATA_DIR
-    ? path.resolve(process.env.DATA_DIR)
-    : path.join(__dirname, 'data');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, `summary-${prefix}.xlsx`);
+  return path.join(dataDir(), `summary-${prefix}.xlsx`);
 }
 
 function summaryRowsForMonth(punches, names, prefix) {
@@ -265,11 +304,11 @@ function addSummarySheet(wb, prefix, punches, names) {
   }, { present: 0, late: 0, lateMinutes: 0 });
 
   ws.mergeCells(2, 1, 2, 4);
-  ws.getCell(2, 1).value = `Present days: ${totals.present}    Late days: ${totals.late}    Late minutes: ${totals.lateMinutes}`;
+  ws.getCell(2, 1).value = `Present days: ${totals.present}    Late days: ${totals.late}    Late by: ${formatLate(totals.lateMinutes) || '0m'}`;
   ws.getCell(2, 1).font = { color: { argb: 'FF4A4A46' } };
   ws.getRow(2).height = 18;
 
-  ['Employee', 'Present', 'Late', 'Late min'].forEach((label, i) => {
+  ['Employee', 'Present', 'Late', 'Late by'].forEach((label, i) => {
     const cell = ws.getCell(3, i + 1);
     cell.value = label;
     cell.font = HEADER_FONT;
@@ -282,7 +321,7 @@ function addSummarySheet(wb, prefix, punches, names) {
     r.getCell(1).value = row.name;
     r.getCell(2).value = row.present;
     r.getCell(3).value = row.late;
-    r.getCell(4).value = row.lateMinutes;
+    r.getCell(4).value = formatLate(row.lateMinutes);
     r.getCell(2).alignment = { horizontal: 'center' };
     r.getCell(3).alignment = { horizontal: 'center' };
     r.getCell(4).alignment = { horizontal: 'center' };
@@ -297,7 +336,7 @@ function addSummarySheet(wb, prefix, punches, names) {
   totalRow.getCell(1).value = 'Total';
   totalRow.getCell(2).value = totals.present;
   totalRow.getCell(3).value = totals.late;
-  totalRow.getCell(4).value = totals.lateMinutes;
+  totalRow.getCell(4).value = formatLate(totals.lateMinutes);
   totalRow.getCell(2).alignment = { horizontal: 'center' };
   totalRow.getCell(3).alignment = { horizontal: 'center' };
   totalRow.getCell(4).alignment = { horizontal: 'center' };
@@ -309,7 +348,7 @@ async function writeMonthSummary(punches, names, prefix) {
   wb.creator = 'StaffTrack';
   addSummarySheet(wb, prefix, punches, names);
   const target = summaryFilePath(prefix);
-  await wb.xlsx.writeFile(target);
+  await saveWorkbook(wb, target);
   return target;
 }
 
@@ -321,7 +360,7 @@ function addLogSheet(wb, punches) {
     { header: 'Check In', key: 'inTime', width: 12 },
     { header: 'Check Out', key: 'outTime', width: 12 },
     { header: 'Late', key: 'late', width: 10 },
-    { header: 'LateMinutes', key: 'lateMinutes', width: 14 }
+    { header: 'Late by', key: 'lateMinutes', width: 12 }
   ];
   styleHeaderRow(ws.getRow(1));
   ws.getCell(1, 1).alignment = { horizontal: 'left' };
@@ -339,7 +378,7 @@ function addLogSheet(wb, punches) {
       inTime: punch.inTime || '',
       outTime: punch.outTime || '',
       late: punch.late ? 'TRUE' : 'FALSE',
-      lateMinutes: Number(punch.lateMinutes) || 0
+      lateMinutes: formatLate(punch.lateMinutes)
     });
     if (punch.late) {
       row.getCell(5).font = { color: { argb: 'FF7A2221' }, bold: true };
@@ -362,8 +401,7 @@ async function writePunches(punches, names) {
   }
   addLogSheet(wb, list);
 
-  const target = filePath();
-  await wb.xlsx.writeFile(target);
+  const target = await saveWorkbook(wb, filePath());
   for (const prefix of prefixes) {
     await writeMonthSummary(list, names, prefix);
   }

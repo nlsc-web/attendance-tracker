@@ -464,7 +464,7 @@ input {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
+  padding: 9px 6px 9px 10px;
   border: none;
   background: transparent;
   border-radius: 12px;
@@ -474,6 +474,29 @@ input {
   font-weight: 600;
   cursor: pointer;
   text-align: left;
+}
+.combo-option-label {
+  flex: 1;
+  min-width: 0;
+}
+.combo-delete {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #9aa3b2;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.combo-delete svg { width: 16px; height: 16px; }
+.combo-delete:hover,
+.combo-delete:focus-visible {
+  background: #fdecee;
+  color: #c23b3b;
 }
 .combo-option.is-new { color: #167a55; }
 .combo-option:hover,

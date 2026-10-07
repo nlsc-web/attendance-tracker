@@ -62,23 +62,31 @@ async function syncPunch(payload) {
   }
 }
 
-function syncCheckIn(punch) {
+function withNames(punch, names) {
+  const list = Array.isArray(names) ? names.slice() : [];
+  if (punch && punch.name && !list.includes(punch.name)) list.push(punch.name);
+  return list;
+}
+
+function syncCheckIn(punch, names) {
   return syncPunch({
     action: 'checkin',
     date: punch.date,
     name: punch.name,
     inTime: punch.inTime,
     late: Boolean(punch.late),
-    lateMinutes: Number(punch.lateMinutes) || 0
+    lateMinutes: Number(punch.lateMinutes) || 0,
+    names: withNames(punch, names)
   });
 }
 
-function syncCheckOut(punch) {
+function syncCheckOut(punch, names) {
   return syncPunch({
     action: 'checkout',
     date: punch.date,
     name: punch.name,
-    outTime: punch.outTime
+    outTime: punch.outTime,
+    names: withNames(punch, names)
   });
 }
 

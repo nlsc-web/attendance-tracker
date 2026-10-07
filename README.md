@@ -4,7 +4,7 @@ Company attendance clock (Express + SQLite locally, Postgres in production).
 
 Same server pattern as the [marketing tracker](https://marketing-tracker-0qiu.onrender.com/) and [accounts tracker](https://accounts-tracker-as1h.onrender.com/): one Node app on Render, Neon for lifetime data.
 
-Live app: add the Render URL here after the first deploy (`https://attendance-tracker-xxxx.onrender.com`).
+Live app: [https://attendance-tracker-d48e.onrender.com](https://attendance-tracker-d48e.onrender.com)
 
 ## Use on a laptop or kiosk (staff)
 
@@ -49,9 +49,20 @@ The downloaded workbook has:
 - Daily grid tabs with **IN** and **OUT** columns per day
 - **All Punches** log
 
-## Google Sheet sync (optional)
+## Auto-update Excel / Google Sheet
 
-Not required for lifetime storage. Neon is enough. If managers also want a live Sheet, set `SHEET_WEBAPP_URL` in Render Environment after deploying [scripts/AttendanceSheet.gs](scripts/AttendanceSheet.gs) as a Web app (access **Anyone**).
+Every check-in and check-out rewrites `data/attendance.xlsx` and `StaffTrack-Attendance.xlsx` with IN/OUT times.
+
+For a live Google Sheet that updates by itself:
+
+1. Create a Google Sheet.
+2. Extensions → Apps Script → paste [scripts/AttendanceSheet.gs](scripts/AttendanceSheet.gs) → Save.
+3. Deploy → New deployment → Web app. Execute as **Me**. Who has access: **Anyone**.
+4. Copy the `/exec` URL.
+5. Local: create `.env` with `SHEET_WEBAPP_URL=that-url` then restart `npm start`.
+6. Production: add the same key in Render → Environment.
+
+After that, each punch writes the time into the month tab (IN / OUT columns) and the Punches log.
 
 ## Run locally (development)
 

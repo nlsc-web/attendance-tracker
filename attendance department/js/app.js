@@ -32,6 +32,15 @@
   let highlightIndex = 0;
 
   function pad(n) { return n.toString().padStart(2, '0'); }
+  function formatLate(minutes) {
+    const total = Math.max(0, Math.round(Number(minutes) || 0));
+    if (!total) return '0m';
+    const hours = Math.floor(total / 60);
+    const mins = total % 60;
+    if (hours && mins) return `${hours}h ${mins}m`;
+    if (hours) return `${hours}h`;
+    return `${mins}m`;
+  }
   function timeLabel(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -99,6 +108,24 @@
     opt.value = name;
     opt.textContent = name;
     employeeSelect.appendChild(opt);
+    apiPost('/api/users', { name }).catch(() => {});
+  }
+
+  async function removeName(name) {
+    const clean = normalizeName(name);
+    if (!isValidName(clean)) return;
+    if (!window.confirm('Remove ' + clean + ' from the name list?')) return;
+    try {
+      await apiDelete('/api/users', { name: clean });
+      employeeNames = employeeNames.filter((item) => item.toLowerCase() !== clean.toLowerCase());
+      fillEmployees(employeeNames);
+      statusLine.textContent = clean + ' removed from the list.';
+      statusLine.className = 'status-line';
+      setComboOpen(true);
+    } catch (e) {
+      statusLine.textContent = e.message || 'Could not remove name.';
+      statusLine.className = 'status-line late';
+    }
   }
 
   function chooseName(name) {
@@ -150,15 +177,20 @@
     if (highlightIndex >= items.length) highlightIndex = 0;
     if (highlightIndex < 0) highlightIndex = items.length - 1;
     comboList.innerHTML = items.map((item, index) => `
-      <button type="button" class="combo-option${index === highlightIndex ? ' is-active' : ''}${item.isNew ? ' is-new' : ''}" role="option" data-name="${escapeHtml(item.name)}" aria-selected="${item.name === selected}">
+      <div class="combo-option${index === highlightIndex ? ' is-active' : ''}${item.isNew ? ' is-new' : ''}" role="option" data-name="${escapeHtml(item.name)}" aria-selected="${item.name === selected}">
         <span class="avatar" style="${avatarStyle(item.name)}">${item.isNew ? '+' : escapeHtml(initials(item.name))}</span>
-        <span>${item.isNew ? 'Add <strong>' + escapeHtml(item.name) + '</strong>' : escapeHtml(item.name)}</span>
-      </button>
+        <span class="combo-option-label">${item.isNew ? 'Add <strong>' + escapeHtml(item.name) + '</strong>' : escapeHtml(item.name)}</span>
+        ${item.isNew ? '' : `<button type="button" class="combo-delete" data-name="${escapeHtml(item.name)}" aria-label="Remove ${escapeHtml(item.name)}">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M5 6h10M8 6V5h4v1m-5 2v6m3-6v6M6.5 6.5l.5 9h6l.5-9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>`}
+      </div>
     `).join('');
   }
 
   function fillEmployees(names) {
-    const incoming = Array.isArray(names) && names.length ? names.slice() : EMPLOYEES.slice();
+    const incoming = Array.isArray(names) ? names.slice() : EMPLOYEES.slice();
     const extras = employeeNames.filter((name) => !incoming.some((item) => item.toLowerCase() === name.toLowerCase()));
     const list = incoming.concat(extras);
     employeeNames = list;
@@ -198,9 +230,9 @@
     return res.json();
   }
 
-  async function apiPost(path, payload) {
+  async function apiSend(path, payload, method) {
     const res = await fetch(path, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify(payload)
@@ -212,6 +244,14 @@
       throw err;
     }
     return data;
+  }
+
+  function apiPost(path, payload) {
+    return apiSend(path, payload, 'POST');
+  }
+
+  function apiDelete(path, payload) {
+    return apiSend(path, payload, 'DELETE');
   }
 
   function renderFeed(records) {
@@ -231,7 +271,7 @@
             <div class="ticket-meta">IN ${escapeHtml(r.inTime || '-')}${r.outTime ? '  ·  OUT ' + escapeHtml(r.outTime) : ''}</div>
           </div>
         </div>
-        <div class="ticket-badge ${r.late ? 'late' : ''}">${r.late ? (Number(r.lateMinutes) || 0) + ' min late' : 'On time'}</div>
+        <div class="ticket-badge ${r.late ? 'late' : ''}">${r.late ? formatLate(r.lateMinutes) + ' late' : 'On time'}</div>
       </div>
     `).join('');
   }
@@ -283,7 +323,7 @@
     summaryStats.innerHTML = `
       <div class="kpi"><span>Check-ins</span><strong>${present}</strong></div>
       <div class="kpi warn"><span>Late arrivals</span><strong>${late}</strong></div>
-      <div class="kpi"><span>Late minutes</span><strong>${lateMinutes}</strong></div>
+      <div class="kpi"><span>Late by</span><strong>${formatLate(lateMinutes)}</strong></div>
     `;
     if (!rows.length) {
       summaryBody.innerHTML = '<tr><td colspan="4">No summary data yet.</td></tr>';
@@ -294,7 +334,7 @@
         <td>${escapeHtml(r.name)}</td>
         <td class="num">${Number(r.present) || 0}</td>
         <td class="num late-num">${Number(r.late) || 0}</td>
-        <td class="num">${Number(r.lateMinutes) || 0}</td>
+        <td class="num">${formatLate(r.lateMinutes)}</td>
       </tr>
     `).join('');
   }
@@ -339,7 +379,7 @@
       try {
         const saved = await apiPost('/api/punches/checkin', { name });
         statusLine.textContent = saved.late
-          ? `Checked in — ${saved.lateMinutes} min late.`
+          ? `Checked in — ${formatLate(saved.lateMinutes)} late.`
           : 'Checked in on time.';
         statusLine.className = 'status-line ' + (saved.late ? 'late' : 'ontime');
         clearSelection();
@@ -414,6 +454,13 @@
     comboBackdrop.addEventListener('click', () => setComboOpen(false));
   }
   comboList.addEventListener('click', (event) => {
+    const removeBtn = event.target.closest('.combo-delete');
+    if (removeBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      removeName(removeBtn.dataset.name);
+      return;
+    }
     const option = event.target.closest('.combo-option');
     if (!option) return;
     chooseName(option.dataset.name);

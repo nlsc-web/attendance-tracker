@@ -18,6 +18,8 @@ const CREATE_SQL = `
 
 const UNIQUE_SQL = `CREATE UNIQUE INDEX IF NOT EXISTS punches_date_name ON punches(date, name)`;
 
+const HIDDEN_STAFF_SQL = `CREATE TABLE IF NOT EXISTS hidden_staff (name TEXT PRIMARY KEY)`;
+
 function rowToPunch(row) {
   if (!row) return null;
   return {
@@ -58,6 +60,7 @@ function createSqliteStore() {
   const db = new DatabaseSync(DB_FILE);
   db.exec(CREATE_SQL.replace(/"inTime"/g, 'inTime').replace(/"outTime"/g, 'outTime').replace(/"lateMinutes"/g, 'lateMinutes').replace(/"updatedAt"/g, 'updatedAt'));
   db.exec(UNIQUE_SQL);
+  db.exec(HIDDEN_STAFF_SQL);
 
   return {
     async getPunchesByDate(date) {
@@ -114,6 +117,16 @@ function createSqliteStore() {
     },
     async health() {
       return { driver: 'sqlite', file: DB_FILE };
+    },
+    async listHiddenStaff() {
+      return db.prepare('SELECT name FROM hidden_staff ORDER BY name').all().map((row) => row.name);
+    },
+    async hideStaff(name) {
+      db.prepare('DELETE FROM hidden_staff WHERE lower(name) = lower(?)').run(name);
+      db.prepare('INSERT INTO hidden_staff (name) VALUES (?)').run(name);
+    },
+    async unhideStaff(name) {
+      db.prepare('DELETE FROM hidden_staff WHERE lower(name) = lower(?)').run(name);
     }
   };
 }
@@ -128,6 +141,7 @@ async function createPostgresStore(connectionString) {
   console.log('Postgres database: DATABASE_URL');
   await pool.query(CREATE_SQL);
   await pool.query(UNIQUE_SQL);
+  await pool.query(HIDDEN_STAFF_SQL);
 
   return {
     async getPunchesByDate(date) {
@@ -195,6 +209,17 @@ async function createPostgresStore(connectionString) {
     async health() {
       await pool.query('SELECT 1');
       return { driver: 'postgres' };
+    },
+    async listHiddenStaff() {
+      const res = await pool.query('SELECT name FROM hidden_staff ORDER BY name');
+      return res.rows.map((row) => row.name);
+    },
+    async hideStaff(name) {
+      await pool.query('DELETE FROM hidden_staff WHERE lower(name) = lower($1)', [name]);
+      await pool.query('INSERT INTO hidden_staff (name) VALUES ($1)', [name]);
+    },
+    async unhideStaff(name) {
+      await pool.query('DELETE FROM hidden_staff WHERE lower(name) = lower($1)', [name]);
     }
   };
 }
@@ -219,5 +244,8 @@ module.exports = {
   getMonths: async () => (await getStore()).getMonths(),
   insertPunch: async (punch) => (await getStore()).insertPunch(punch),
   updatePunch: async (punch) => (await getStore()).updatePunch(punch),
-  health: async () => (await getStore()).health()
+  health: async () => (await getStore()).health(),
+  listHiddenStaff: async () => (await getStore()).listHiddenStaff(),
+  hideStaff: async (name) => (await getStore()).hideStaff(name),
+  unhideStaff: async (name) => (await getStore()).unhideStaff(name)
 };
