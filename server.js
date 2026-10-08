@@ -354,6 +354,14 @@ app.post('/api/punches/missed', auth.requireCorrect, asyncHandler(async (req, re
   }
 }));
 
+app.delete('/api/punches', auth.requireCorrect, asyncHandler(async (req, res) => {
+  const date = parseDateKey(req.query.date || (req.body || {}).date);
+  if (!date) return res.status(400).json({ error: 'Pick a valid date.' });
+  const removed = await db.deletePunchesByDate(date);
+  await excel.rebuild(await db.getAllPunches(), auth.entryNames());
+  res.json({ ok: true, date, removed });
+}));
+
 app.get('/api/summary', asyncHandler(async (req, res) => {
   const prefix = String(req.query.month || monthPrefix());
   const records = await db.getPunchesByMonth(prefix);

@@ -38,6 +38,7 @@
   const missedIn = document.getElementById('missedIn');
   const missedOut = document.getElementById('missedOut');
   const missedSaveBtn = document.getElementById('missedSaveBtn');
+  const missedClearBtn = document.getElementById('missedClearBtn');
   const missingDate = document.getElementById('missingDate');
   const missingTitle = document.getElementById('missingTitle');
   const missingInCount = document.getElementById('missingInCount');
@@ -470,7 +471,7 @@
   }
 
   async function withBusy(button, fn) {
-    const buttons = [checkInBtn, checkOutBtn, missedSaveBtn, correctionLoginBtn].filter(Boolean);
+    const buttons = [checkInBtn, checkOutBtn, missedSaveBtn, missedClearBtn, correctionLoginBtn].filter(Boolean);
     buttons.forEach((btn) => { btn.disabled = true; });
     button.classList.add('is-busy');
     try {
@@ -641,6 +642,25 @@
     });
   }
   if (missedSaveBtn) missedSaveBtn.addEventListener('click', handleMissedSave);
+
+  async function handleMissedClear() {
+    const date = missedDate && missedDate.value;
+    if (!date) { statusLine.textContent = 'Pick the date to clear.'; return; }
+    if (!window.confirm('Delete every punch for ' + date + '? This cannot be undone.')) return;
+    await withBusy(missedClearBtn, async () => {
+      try {
+        const result = await apiDelete('/api/punches?date=' + encodeURIComponent(date), {});
+        statusLine.textContent = 'Cleared ' + (result.removed || 0) + ' punch(es) for ' + date + '.';
+        statusLine.className = 'status-line ontime';
+        refreshFeed();
+      } catch (e) {
+        statusLine.textContent = e.message || 'Could not clear that day.';
+        statusLine.className = 'status-line late';
+        if (e.status === 401 || e.status === 403) setCorrectionView('pin');
+      }
+    });
+  }
+  if (missedClearBtn) missedClearBtn.addEventListener('click', handleMissedClear);
 
   comboSearch.addEventListener('focus', () => setComboOpen(true));
   comboSearch.addEventListener('input', () => {

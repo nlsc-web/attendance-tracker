@@ -127,6 +127,10 @@ function createSqliteStore() {
     },
     async unhideStaff(name) {
       db.prepare('DELETE FROM hidden_staff WHERE lower(name) = lower(?)').run(name);
+    },
+    async deletePunchesByDate(date) {
+      const info = db.prepare('DELETE FROM punches WHERE date = ?').run(date);
+      return Number(info.changes) || 0;
     }
   };
 }
@@ -220,6 +224,10 @@ async function createPostgresStore(connectionString) {
     },
     async unhideStaff(name) {
       await pool.query('DELETE FROM hidden_staff WHERE lower(name) = lower($1)', [name]);
+    },
+    async deletePunchesByDate(date) {
+      const res = await pool.query('DELETE FROM punches WHERE date = $1', [date]);
+      return Number(res.rowCount) || 0;
     }
   };
 }
@@ -247,5 +255,6 @@ module.exports = {
   health: async () => (await getStore()).health(),
   listHiddenStaff: async () => (await getStore()).listHiddenStaff(),
   hideStaff: async (name) => (await getStore()).hideStaff(name),
-  unhideStaff: async (name) => (await getStore()).unhideStaff(name)
+  unhideStaff: async (name) => (await getStore()).unhideStaff(name),
+  deletePunchesByDate: async (date) => (await getStore()).deletePunchesByDate(date)
 };
