@@ -1,8 +1,8 @@
 const DEFAULT_STAFF = [
   'Mrs.Nirmala', 'Ms.Kaushalya', 'Ms.Sajini', 'Mr.Denuwan', 'Mrs.Sumudu', 'Ms.Bhagya',
-  'Ms.Dinithi', 'Ms.Tharusha', 'Ms.Ayeshka', 'Ms.Minoshi', 'Ms.Dilini', 'Mr.Lahiru',
+  'Ms.Dinithi', 'Ms.Tharusha', 'Ms.Dilini', 'Mr.Lahiru',
   'Mrs.Karthika', 'Mr.Rehan', 'Mr.Maliq', 'Mr.Dilan', 'Mr.Asjath', 'Mrs.Ruchira',
-  'Mr.Rukshan', 'Ms.Miloshi', 'Mrs.Dilrukshi', 'Mr.Charith'
+  'Ms.Miloshi', 'Mrs.Dilrukshi', 'Mr.Charith'
 ];
 const PUNCH_HEADERS = ['Date', 'Name', 'InTime', 'OutTime', 'Late', 'Late by'];
 const LATE_BG = '#F5D6CF';

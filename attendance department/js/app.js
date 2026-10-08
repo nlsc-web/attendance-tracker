@@ -1,9 +1,9 @@
 (function () {
   const EMPLOYEES = [
     'Mrs.Nirmala', 'Ms.Kaushalya', 'Ms.Sajini', 'Mr.Denuwan', 'Mrs.Sumudu', 'Ms.Bhagya',
-    'Ms.Dinithi', 'Ms.Tharusha', 'Ms.Ayeshka', 'Ms.Minoshi', 'Ms.Dilini', 'Mr.Lahiru',
+    'Ms.Dinithi', 'Ms.Tharusha', 'Ms.Dilini', 'Mr.Lahiru',
     'Mrs.Karthika', 'Mr.Rehan', 'Mr.Maliq', 'Mr.Dilan', 'Mr.Asjath', 'Mrs.Ruchira',
-    'Mr.Rukshan', 'Ms.Miloshi', 'Mrs.Dilrukshi', 'Mr.Charith'
+    'Ms.Miloshi', 'Mrs.Dilrukshi', 'Mr.Charith'
   ];
 
   const employeeSelect = document.getElementById('employeeSelect');
@@ -223,11 +223,13 @@
     if (!window.confirm('Remove ' + clean + ' from the name list?')) return;
     try {
       await apiDelete('/api/users', { name: clean });
+      const selected = employeeSelect.value;
       employeeNames = employeeNames.filter((item) => item.toLowerCase() !== clean.toLowerCase());
       fillEmployees(employeeNames);
-      statusLine.textContent = clean + ' removed from the list.';
-      statusLine.className = 'status-line';
-      setComboOpen(true);
+      if (selected && selected.toLowerCase() === clean.toLowerCase()) clearSelection();
+      setComboOpen(false);
+      statusLine.textContent = clean + ' removed from the name list.';
+      statusLine.className = 'status-line ontime';
     } catch (e) {
       statusLine.textContent = e.message || 'Could not remove name.';
       statusLine.className = 'status-line late';
@@ -297,7 +299,12 @@
 
   function fillEmployees(names) {
     const incoming = Array.isArray(names) ? names.slice() : EMPLOYEES.slice();
-    const extras = employeeNames.filter((name) => !incoming.some((item) => item.toLowerCase() === name.toLowerCase()));
+    const extras = employeeNames.filter((name) => {
+      const already = incoming.some((item) => item.toLowerCase() === name.toLowerCase());
+      if (already) return false;
+      const builtin = EMPLOYEES.some((item) => item.toLowerCase() === name.toLowerCase());
+      return !builtin;
+    });
     const list = incoming.concat(extras);
     employeeNames = list;
     const current = employeeSelect.value;
@@ -317,8 +324,6 @@
     renderComboList();
     refreshMissing();
   }
-
-  fillEmployees(EMPLOYEES);
 
   function tickClock() {
     const now = new Date();
@@ -358,7 +363,8 @@
   }
 
   function apiDelete(path, payload) {
-    return apiSend(path, payload, 'DELETE');
+    const name = payload && payload.name ? ('?name=' + encodeURIComponent(payload.name)) : '';
+    return apiSend(path + name, payload, 'DELETE');
   }
 
   function renderFeed(records) {

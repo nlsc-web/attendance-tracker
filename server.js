@@ -11,6 +11,8 @@ const STATIC_DIR = path.join(__dirname, 'attendance department');
 const TZ = 'Asia/Colombo';
 const SHIFT_HOUR = 8;
 const SHIFT_MIN = 30;
+const LATE_HOUR = 8;
+const LATE_MIN = 35;
 
 app.use(express.json({ limit: '32kb' }));
 app.use(express.static(STATIC_DIR, {
@@ -69,7 +71,7 @@ function monthPrefix() {
 function lateInfo(timeStr) {
   const [h, m, s] = String(timeStr).split(':').map((x) => Number(x) || 0);
   const punchSeconds = h * 3600 + m * 60 + s;
-  const cutoffSeconds = SHIFT_HOUR * 3600 + SHIFT_MIN * 60;
+  const cutoffSeconds = LATE_HOUR * 3600 + LATE_MIN * 60;
   const late = punchSeconds > cutoffSeconds;
   const lateMinutes = late ? Math.round((punchSeconds - cutoffSeconds) / 60) : 0;
   return { late, lateMinutes };
@@ -212,7 +214,7 @@ app.post('/api/correction/login', asyncHandler(async (req, res) => {
 }));
 
 function staffNameFromBody(req) {
-  const name = String((req.body || {}).name || '').trim().replace(/\s+/g, ' ');
+  const name = String((req.body || {}).name || (req.query || {}).name || '').trim().replace(/\s+/g, ' ');
   if (name.length < 2 || name.length > 48) return null;
   if (!/^[\p{L}\p{M}0-9][\p{L}\p{M}0-9 .'-]*$/u.test(name)) return null;
   return name;

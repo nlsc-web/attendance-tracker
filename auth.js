@@ -26,8 +26,6 @@ const STAFF = [
   'Ms.Bhagya',
   'Ms.Dinithi',
   'Ms.Tharusha',
-  'Ms.Ayeshka',
-  'Ms.Minoshi',
   'Ms.Dilini',
   'Mr.Lahiru',
   'Mrs.Karthika',
@@ -36,7 +34,6 @@ const STAFF = [
   'Mr.Dilan',
   'Mr.Asjath',
   'Mrs.Ruchira',
-  'Mr.Rukshan',
   'Ms.Miloshi',
   'Mrs.Dilrukshi',
   'Mr.Charith'
