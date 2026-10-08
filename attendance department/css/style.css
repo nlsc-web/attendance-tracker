@@ -830,6 +830,34 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.ticket-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.ticket-fix {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.ticket-fix-btn {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.06);
+  color: #d7deea;
+  font-family: var(--sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ticket-fix-btn.danger {
+  color: #ffd0c6;
+  border-color: rgba(212, 101, 79, 0.35);
+}
 .ticket-badge {
   flex: 0 0 auto;
   font-size: 0.66rem;

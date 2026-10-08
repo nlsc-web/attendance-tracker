@@ -51,6 +51,8 @@
   let highlightIndex = 0;
   let clockToday = localDateKey(new Date());
   let clockStart = '2026-10-08';
+  let officeUnlocked = false;
+  let lastFeedRecords = [];
 
   function pad(n) { return n.toString().padStart(2, '0'); }
   function localDateKey(d) {
@@ -367,6 +369,7 @@
 
   function renderFeed(records) {
     const todays = Array.isArray(records) ? records.slice() : [];
+    lastFeedRecords = todays;
     todays.sort((a, b) => String(a.inTime || '').localeCompare(String(b.inTime || '')) * -1);
     feedCount.textContent = String(todays.length);
     if (!todays.length) {
@@ -374,7 +377,7 @@
       return;
     }
     feedList.innerHTML = todays.map((r) => `
-      <div class="ticket ${r.late ? 'late-ticket' : ''}">
+      <div class="ticket ${r.late ? 'late-ticket' : ''}" data-id="${escapeHtml(r.id || '')}">
         <div class="ticket-main">
           <span class="avatar" style="${avatarStyle(r.name)}">${escapeHtml(initials(r.name))}</span>
           <div>
@@ -382,7 +385,14 @@
             <div class="ticket-meta">IN ${escapeHtml(r.inTime || '-')}${r.outTime ? '  ·  OUT ' + escapeHtml(r.outTime) : ''}</div>
           </div>
         </div>
-        <div class="ticket-badge ${r.late ? 'late' : ''}">${r.late ? formatLate(r.lateMinutes) + ' late' : 'On time'}</div>
+        <div class="ticket-side">
+          <div class="ticket-badge ${r.late ? 'late' : ''}">${r.late ? formatLate(r.lateMinutes) + ' late' : 'On time'}</div>
+          ${officeUnlocked ? `
+            <div class="ticket-fix">
+              ${r.outTime ? `<button class="ticket-fix-btn" type="button" data-action="undo-out" data-id="${escapeHtml(r.id)}" data-name="${escapeHtml(r.name)}">Undo out</button>` : ''}
+              <button class="ticket-fix-btn danger" type="button" data-action="remove" data-id="${escapeHtml(r.id)}" data-name="${escapeHtml(r.name)}">Remove</button>
+            </div>` : ''}
+        </div>
       </div>
     `).join('');
   }
@@ -535,6 +545,7 @@
   function setCorrectionView(mode, user) {
     const unlocked = mode === 'unlocked';
     const pinOpen = mode === 'pin';
+    officeUnlocked = unlocked;
     if (correctionLogin) correctionLogin.hidden = !pinOpen;
     if (missedPanel) missedPanel.hidden = !unlocked;
     if (correctionLock) {
@@ -545,10 +556,11 @@
       setupMissedDates();
       if (correctionWho) {
         correctionWho.textContent = user && user.name
-          ? 'Signed in as ' + user.name + '. Add a missed punch for any staff member.'
-          : 'Add a missed punch for any staff member.';
+          ? 'Signed in as ' + user.name + '. Fix a wrong punch below, or add a missed one.'
+          : 'Fix a wrong punch below, or add a missed one.';
       }
     }
+    renderFeed(lastFeedRecords);
   }
 
   async function refreshCorrection() {
@@ -572,7 +584,7 @@
         const me = await apiPost('/api/correction/login', { pin });
         if (correctionPin) correctionPin.value = '';
         setCorrectionView('unlocked', me);
-        statusLine.textContent = 'Office login unlocked. Add the missed punch below.';
+        statusLine.textContent = 'Office login unlocked. You can remove a wrong check-in or check-out.';
         statusLine.className = 'status-line ontime';
       } catch (e) {
         statusLine.textContent = e.message || 'Wrong PIN.';
@@ -599,6 +611,40 @@
     });
   }
   if (correctionLoginBtn) correctionLoginBtn.addEventListener('click', handleCorrectionLogin);
+  if (feedList) {
+    feedList.addEventListener('click', async (event) => {
+      const btn = event.target.closest('.ticket-fix-btn');
+      if (!btn || !officeUnlocked) return;
+      const id = btn.dataset.id;
+      const name = btn.dataset.name || 'this punch';
+      const action = btn.dataset.action;
+      if (action === 'undo-out') {
+        if (!window.confirm('Remove the check-out for ' + name + '? Check-in will stay.')) return;
+        try {
+          await apiPost('/api/punches/item/' + encodeURIComponent(id) + '/undo-out', {});
+          statusLine.textContent = 'Removed check-out for ' + name + '.';
+          statusLine.className = 'status-line ontime';
+          refreshFeed();
+        } catch (e) {
+          statusLine.textContent = e.message || 'Could not undo check-out.';
+          statusLine.className = 'status-line late';
+        }
+        return;
+      }
+      if (action === 'remove') {
+        if (!window.confirm('Remove the whole punch for ' + name + '?')) return;
+        try {
+          await apiDelete('/api/punches/item/' + encodeURIComponent(id), {});
+          statusLine.textContent = 'Removed punch for ' + name + '.';
+          statusLine.className = 'status-line ontime';
+          refreshFeed();
+        } catch (e) {
+          statusLine.textContent = e.message || 'Could not remove punch.';
+          statusLine.className = 'status-line late';
+        }
+      }
+    });
+  }
   if (correctionLogout) correctionLogout.addEventListener('click', handleCorrectionLogout);
   if (correctionPin) {
     correctionPin.addEventListener('keydown', (event) => {

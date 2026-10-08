@@ -18,7 +18,7 @@ Render’s free plan sleeps after idle time. The first open in the morning can t
 
 After go-live, do **not** treat `localhost:5700` or `data/tracker.db` as the real records.
 
-To change staff names, edit the `STAFF` list in `auth.js`, commit, and deploy.
+To add a staff name, type it in the dropdown and choose **Add**. To remove one, use the delete button on the right of the name.
 
 ## Lifetime data (production)
 

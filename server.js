@@ -153,23 +153,53 @@ app.get('/api/clock', (req, res) => {
   });
 });
 
-app.get('/api/users', asyncHandler(async (req, res) => {
+async function staffRoster() {
   const hidden = new Set(
     (await db.listHiddenStaff()).map((name) => String(name).toLowerCase())
   );
-  res.json(auth.publicUsers().filter((user) => !hidden.has(String(user.name).toLowerCase())));
+  const extra = await db.listExtraStaff();
+  const seen = new Set();
+  const users = [];
+  for (const user of auth.publicUsers()) {
+    const key = String(user.name).toLowerCase();
+    if (hidden.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    users.push(user);
+  }
+  extra
+    .slice()
+    .sort((a, b) => String(a).localeCompare(String(b)))
+    .forEach((name) => {
+      const key = String(name).toLowerCase();
+      if (hidden.has(key) || seen.has(key)) return;
+      seen.add(key);
+      users.push({ name, role: 'entry' });
+    });
+  return users;
+}
+
+async function listedEntryNames() {
+  return (await staffRoster())
+    .filter((user) => user.role === 'entry')
+    .map((user) => user.name);
+}
+
+app.get('/api/users', asyncHandler(async (req, res) => {
+  res.json(await staffRoster());
 }));
 
 app.post('/api/users', asyncHandler(async (req, res) => {
   const name = staffNameFromBody(req);
   if (!name) return res.status(400).json({ error: 'Select a valid name.' });
   await db.unhideStaff(name);
+  await db.addExtraStaff(name);
   res.json({ ok: true, name });
 }));
 
 app.delete('/api/users', asyncHandler(async (req, res) => {
   const name = staffNameFromBody(req);
   if (!name) return res.status(400).json({ error: 'Select a valid name.' });
+  await db.removeExtraStaff(name);
   await db.hideStaff(name);
   res.json({ ok: true, name });
 }));
@@ -264,7 +294,7 @@ app.post('/api/punches/checkin', asyncHandler(async (req, res) => {
     const saved = existing
       ? await db.updatePunch(punch)
       : await db.insertPunch(punch);
-    const names = auth.entryNames();
+    const names = await listedEntryNames();
     await afterPunch(saved, names, { inChanged: true, outChanged: false });
     res.status(existing ? 200 : 201).json(saved);
   } catch (err) {
@@ -292,7 +322,7 @@ app.post('/api/punches/checkout', asyncHandler(async (req, res) => {
     outTime: timeLabel(),
     updatedAt: new Date().toISOString()
   });
-  const names = auth.entryNames();
+  const names = await listedEntryNames();
   await afterPunch(saved, names, { inChanged: false, outChanged: true });
   res.json(saved);
 }));
@@ -353,7 +383,7 @@ app.post('/api/punches/missed', auth.requireCorrect, asyncHandler(async (req, re
     const saved = existing
       ? await db.updatePunch(punch)
       : await db.insertPunch(punch);
-    const names = auth.entryNames();
+    const names = await listedEntryNames();
     await afterPunch(saved, names, {
       inChanged: !existing || !existing.inTime,
       outChanged: Boolean(outTime)
@@ -367,6 +397,42 @@ app.post('/api/punches/missed', auth.requireCorrect, asyncHandler(async (req, re
   }
 }));
 
+function punchIdFromParam(raw) {
+  const id = String(raw || '').trim();
+  if (!/^p[a-z0-9]+$/i.test(id)) return null;
+  return id;
+}
+
+app.delete('/api/punches/item/:id', auth.requireCorrect, asyncHandler(async (req, res) => {
+  const id = punchIdFromParam(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Invalid punch.' });
+  const existing = await db.getPunchById(id);
+  if (!existing) return res.status(404).json({ error: 'Punch not found.' });
+  if (existing.date < START_DATE) {
+    return res.status(400).json({ error: 'Attendance starts from ' + START_DATE + '.' });
+  }
+  await db.deletePunchById(id);
+  await excel.rebuild(await db.getAllPunches(), await listedEntryNames());
+  res.json({ ok: true, id, name: existing.name, date: existing.date });
+}));
+
+app.post('/api/punches/item/:id/undo-out', auth.requireCorrect, asyncHandler(async (req, res) => {
+  const id = punchIdFromParam(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Invalid punch.' });
+  const existing = await db.getPunchById(id);
+  if (!existing) return res.status(404).json({ error: 'Punch not found.' });
+  if (!existing.outTime) {
+    return res.status(409).json({ error: 'No check-out to remove.' });
+  }
+  const saved = await db.updatePunch({
+    ...existing,
+    outTime: '',
+    updatedAt: new Date().toISOString()
+  });
+  await excel.rebuild(await db.getAllPunches(), await listedEntryNames());
+  res.json(saved);
+}));
+
 app.delete('/api/punches', auth.requireCorrect, asyncHandler(async (req, res) => {
   const date = parseDateKey(req.query.date || (req.body || {}).date);
   if (!date) return res.status(400).json({ error: 'Pick a valid date.' });
@@ -374,14 +440,14 @@ app.delete('/api/punches', auth.requireCorrect, asyncHandler(async (req, res) =>
     return res.status(400).json({ error: 'Attendance starts from ' + START_DATE + '.' });
   }
   const removed = await db.deletePunchesByDate(date);
-  await excel.rebuild(await db.getAllPunches(), auth.entryNames());
+  await excel.rebuild(await db.getAllPunches(), await listedEntryNames());
   res.json({ ok: true, date, removed });
 }));
 
 app.get('/api/summary', asyncHandler(async (req, res) => {
   const prefix = String(req.query.month || monthPrefix());
   const records = await db.getPunchesByMonth(prefix);
-  const listed = auth.entryNames();
+  const listed = await listedEntryNames();
   const extra = [...new Set(records.map((r) => r.name).filter(Boolean))]
     .filter((name) => !listed.includes(name))
     .sort((a, b) => a.localeCompare(b));
@@ -418,14 +484,14 @@ app.get('/api/export-summary.xlsx', asyncHandler(async (req, res) => {
   const prefix = /^\d{4}-\d{2}$/.test(requested) ? requested : monthPrefix();
   const file = await excel.rebuildMonthSummary(
     await db.getAllPunches(),
-    auth.entryNames(),
+    await listedEntryNames(),
     prefix
   );
   sendExcel(res, file, `StaffTrack-summary-${prefix}.xlsx`);
 }));
 
 app.get('/api/export.xlsx', asyncHandler(async (req, res) => {
-  const file = await excel.rebuild(await db.getAllPunches(), auth.entryNames());
+  const file = await excel.rebuild(await db.getAllPunches(), await listedEntryNames());
   sendExcel(res, file, `StaffTrack-${todayKey()}.xlsx`);
 }));
 
@@ -442,7 +508,7 @@ async function start() {
   await db.ready();
   const removed = await db.deletePunchesBefore(START_DATE);
   if (removed) console.log(`Cleared ${removed} punches before ${START_DATE}`);
-  excel.rebuild(await db.getAllPunches(), auth.entryNames()).catch((err) => {
+  excel.rebuild(await db.getAllPunches(), await listedEntryNames()).catch((err) => {
     console.error('Initial Excel build failed:', err.message);
   });
   app.listen(PORT, '0.0.0.0', () => {

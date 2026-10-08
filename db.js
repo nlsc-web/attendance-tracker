@@ -19,6 +19,7 @@ const CREATE_SQL = `
 const UNIQUE_SQL = `CREATE UNIQUE INDEX IF NOT EXISTS punches_date_name ON punches(date, name)`;
 
 const HIDDEN_STAFF_SQL = `CREATE TABLE IF NOT EXISTS hidden_staff (name TEXT PRIMARY KEY)`;
+const EXTRA_STAFF_SQL = `CREATE TABLE IF NOT EXISTS extra_staff (name TEXT PRIMARY KEY)`;
 
 function rowToPunch(row) {
   if (!row) return null;
@@ -61,6 +62,7 @@ function createSqliteStore() {
   db.exec(CREATE_SQL.replace(/"inTime"/g, 'inTime').replace(/"outTime"/g, 'outTime').replace(/"lateMinutes"/g, 'lateMinutes').replace(/"updatedAt"/g, 'updatedAt'));
   db.exec(UNIQUE_SQL);
   db.exec(HIDDEN_STAFF_SQL);
+  db.exec(EXTRA_STAFF_SQL);
 
   return {
     async getPunchesByDate(date) {
@@ -73,6 +75,13 @@ function createSqliteStore() {
       return rowToPunch(
         db.prepare('SELECT * FROM punches WHERE date = ? AND name = ?').get(date, name)
       );
+    },
+    async getPunchById(id) {
+      return rowToPunch(db.prepare('SELECT * FROM punches WHERE id = ?').get(id));
+    },
+    async deletePunchById(id) {
+      const info = db.prepare('DELETE FROM punches WHERE id = ?').run(id);
+      return Number(info.changes) || 0;
     },
     async getPunchesByMonth(monthPrefix) {
       return db
@@ -128,6 +137,16 @@ function createSqliteStore() {
     async unhideStaff(name) {
       db.prepare('DELETE FROM hidden_staff WHERE lower(name) = lower(?)').run(name);
     },
+    async listExtraStaff() {
+      return db.prepare('SELECT name FROM extra_staff ORDER BY name').all().map((row) => row.name);
+    },
+    async addExtraStaff(name) {
+      db.prepare('DELETE FROM extra_staff WHERE lower(name) = lower(?)').run(name);
+      db.prepare('INSERT INTO extra_staff (name) VALUES (?)').run(name);
+    },
+    async removeExtraStaff(name) {
+      db.prepare('DELETE FROM extra_staff WHERE lower(name) = lower(?)').run(name);
+    },
     async deletePunchesByDate(date) {
       const info = db.prepare('DELETE FROM punches WHERE date = ?').run(date);
       return Number(info.changes) || 0;
@@ -150,6 +169,7 @@ async function createPostgresStore(connectionString) {
   await pool.query(CREATE_SQL);
   await pool.query(UNIQUE_SQL);
   await pool.query(HIDDEN_STAFF_SQL);
+  await pool.query(EXTRA_STAFF_SQL);
 
   return {
     async getPunchesByDate(date) {
@@ -165,6 +185,14 @@ async function createPostgresStore(connectionString) {
         [date, name]
       );
       return rowToPunch(res.rows[0]);
+    },
+    async getPunchById(id) {
+      const res = await pool.query('SELECT * FROM punches WHERE id = $1', [id]);
+      return rowToPunch(res.rows[0]);
+    },
+    async deletePunchById(id) {
+      const res = await pool.query('DELETE FROM punches WHERE id = $1', [id]);
+      return Number(res.rowCount) || 0;
     },
     async getPunchesByMonth(monthPrefix) {
       const res = await pool.query(
@@ -229,6 +257,17 @@ async function createPostgresStore(connectionString) {
     async unhideStaff(name) {
       await pool.query('DELETE FROM hidden_staff WHERE lower(name) = lower($1)', [name]);
     },
+    async listExtraStaff() {
+      const res = await pool.query('SELECT name FROM extra_staff ORDER BY name');
+      return res.rows.map((row) => row.name);
+    },
+    async addExtraStaff(name) {
+      await pool.query('DELETE FROM extra_staff WHERE lower(name) = lower($1)', [name]);
+      await pool.query('INSERT INTO extra_staff (name) VALUES ($1)', [name]);
+    },
+    async removeExtraStaff(name) {
+      await pool.query('DELETE FROM extra_staff WHERE lower(name) = lower($1)', [name]);
+    },
     async deletePunchesByDate(date) {
       const res = await pool.query('DELETE FROM punches WHERE date = $1', [date]);
       return Number(res.rowCount) || 0;
@@ -255,6 +294,8 @@ module.exports = {
   ready: () => getStore(),
   getPunchesByDate: async (date) => (await getStore()).getPunchesByDate(date),
   getPunchByDateName: async (date, name) => (await getStore()).getPunchByDateName(date, name),
+  getPunchById: async (id) => (await getStore()).getPunchById(id),
+  deletePunchById: async (id) => (await getStore()).deletePunchById(id),
   getPunchesByMonth: async (prefix) => (await getStore()).getPunchesByMonth(prefix),
   getAllPunches: async () => (await getStore()).getAllPunches(),
   getMonths: async () => (await getStore()).getMonths(),
@@ -264,6 +305,9 @@ module.exports = {
   listHiddenStaff: async () => (await getStore()).listHiddenStaff(),
   hideStaff: async (name) => (await getStore()).hideStaff(name),
   unhideStaff: async (name) => (await getStore()).unhideStaff(name),
+  listExtraStaff: async () => (await getStore()).listExtraStaff(),
+  addExtraStaff: async (name) => (await getStore()).addExtraStaff(name),
+  removeExtraStaff: async (name) => (await getStore()).removeExtraStaff(name),
   deletePunchesByDate: async (date) => (await getStore()).deletePunchesByDate(date),
   deletePunchesBefore: async (date) => (await getStore()).deletePunchesBefore(date)
 };
