@@ -2,6 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const ExcelJS = require('exceljs');
 
+const START_DATE = '2026-10-08';
+
+function livePunches(punches) {
+  return (punches || []).filter((p) => String(p.date || '') >= START_DATE);
+}
+
 const HEADER_FILL = {
   type: 'pattern',
   pattern: 'solid',
@@ -148,7 +154,7 @@ function addMonthSheet(wb, prefix, punches, names) {
   const days = daysInMonth(year, month);
   const lookup = new Map();
   for (const punch of punches || []) {
-    if (String(punch.date || '').startsWith(prefix)) {
+    if (String(punch.date || '').startsWith(prefix) && String(punch.date || '') >= START_DATE) {
       lookup.set(punchKey(punch.date, punch.name), punch);
     }
   }
@@ -236,6 +242,8 @@ function addMonthSheet(wb, prefix, punches, names) {
       const outCell = row.getCell(outCol);
       inCell.alignment = { horizontal: 'center', vertical: 'middle' };
       outCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      if (date < START_DATE) continue;
 
       if (punch && punch.inTime) {
         inCell.value = timeHHMM(punch.inTime);
@@ -347,7 +355,7 @@ function addSummarySheet(wb, prefix, punches, names) {
 async function writeMonthSummary(punches, names, prefix) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'StaffTrack';
-  addSummarySheet(wb, prefix, punches, names);
+  addSummarySheet(wb, prefix, livePunches(punches), names);
   const target = summaryFilePath(prefix);
   await saveWorkbook(wb, target);
   return target;
@@ -388,7 +396,7 @@ function addLogSheet(wb, punches) {
 }
 
 async function writePunches(punches, names) {
-  const list = Array.isArray(punches) ? punches : [];
+  const list = livePunches(punches);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'StaffTrack';
   wb.created = new Date();

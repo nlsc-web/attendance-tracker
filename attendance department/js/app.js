@@ -49,6 +49,8 @@
 
   let employeeNames = EMPLOYEES.slice();
   let highlightIndex = 0;
+  let clockToday = localDateKey(new Date());
+  let clockStart = '2026-10-08';
 
   function pad(n) { return n.toString().padStart(2, '0'); }
   function localDateKey(d) {
@@ -56,25 +58,19 @@
   }
   function setupMissedDates() {
     if (!missedDate) return;
-    const today = localDateKey(new Date());
-    const min = new Date();
-    min.setDate(min.getDate() - 90);
-    missedDate.max = today;
-    missedDate.min = localDateKey(min);
-    if (!missedDate.value) missedDate.value = today;
+    missedDate.max = clockToday;
+    missedDate.min = clockStart;
+    if (!missedDate.value || missedDate.value < clockStart) missedDate.value = clockToday;
   }
   function setupMissingDate() {
     if (!missingDate) return;
-    const today = localDateKey(new Date());
-    const min = new Date();
-    min.setDate(min.getDate() - 90);
-    missingDate.max = today;
-    missingDate.min = localDateKey(min);
-    if (!missingDate.value) missingDate.value = today;
+    missingDate.max = clockToday;
+    missingDate.min = clockStart;
+    if (!missingDate.value || missingDate.value < clockStart) missingDate.value = clockToday;
   }
   function missingDayLabel(value) {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'today';
-    if (value === localDateKey(new Date())) return 'today';
+    if (value === clockToday) return 'today';
     const [year, month, day] = value.split('-').map(Number);
     return new Date(year, month - 1, day).toLocaleDateString(undefined, {
       day: 'numeric', month: 'short'
@@ -460,7 +456,7 @@
     try {
       const records = await apiGet('/api/punches');
       renderFeed(records);
-      const today = localDateKey(new Date());
+      const today = clockToday;
       if (missingDate && missingDate.value && missingDate.value !== today) {
         await refreshMissing();
       } else {
@@ -749,6 +745,12 @@
   });
 
   (async function start() {
+    try {
+      const clock = await apiGet('/api/clock');
+      if (clock && clock.today) clockToday = clock.today;
+      if (clock && clock.startDate) clockStart = clock.startDate;
+    } catch (e) { /* use local today */ }
+    setupMissingDate();
     try {
       const users = await apiGet('/api/users');
       const names = (users || [])

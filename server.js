@@ -12,6 +12,7 @@ const STATIC_DIR = path.join(__dirname, 'attendance department');
 const TZ = 'Asia/Colombo';
 const SHIFT_HOUR = 8;
 const SHIFT_MIN = 30;
+const START_DATE = '2026-10-08';
 const LATE_HOUR = 8;
 const LATE_MIN = 35;
 
@@ -136,11 +137,21 @@ app.get('/api/health', asyncHandler(async (req, res) => {
   res.json({
     ok: true,
     time: new Date().toISOString(),
+    today: todayKey(),
+    startDate: START_DATE,
     db: dbHealth,
     sheet: sheet.configured(),
     excel: excel.filePath()
   });
 }));
+
+app.get('/api/clock', (req, res) => {
+  res.json({
+    today: todayKey(),
+    startDate: START_DATE,
+    time: timeLabel()
+  });
+});
 
 app.get('/api/users', asyncHandler(async (req, res) => {
   const hidden = new Set(
@@ -223,6 +234,7 @@ function staffNameFromBody(req) {
 
 app.get('/api/punches', asyncHandler(async (req, res) => {
   const date = String(req.query.date || todayKey());
+  if (date < START_DATE) return res.json([]);
   res.json(await db.getPunchesByDate(date));
 }));
 
@@ -292,8 +304,8 @@ app.post('/api/punches/missed', auth.requireCorrect, asyncHandler(async (req, re
   if (!date) return res.status(400).json({ error: 'Pick a valid date.' });
   const today = todayKey();
   if (date > today) return res.status(400).json({ error: 'Cannot mark a future date.' });
-  if (date < shiftDateKey(today, -90)) {
-    return res.status(400).json({ error: 'Can only backfill the last 90 days.' });
+  if (date < START_DATE) {
+    return res.status(400).json({ error: 'Attendance starts from ' + START_DATE + '.' });
   }
 
   const inTime = parseClockTime((req.body || {}).inTime);
@@ -358,6 +370,9 @@ app.post('/api/punches/missed', auth.requireCorrect, asyncHandler(async (req, re
 app.delete('/api/punches', auth.requireCorrect, asyncHandler(async (req, res) => {
   const date = parseDateKey(req.query.date || (req.body || {}).date);
   if (!date) return res.status(400).json({ error: 'Pick a valid date.' });
+  if (date < START_DATE) {
+    return res.status(400).json({ error: 'Attendance starts from ' + START_DATE + '.' });
+  }
   const removed = await db.deletePunchesByDate(date);
   await excel.rebuild(await db.getAllPunches(), auth.entryNames());
   res.json({ ok: true, date, removed });
@@ -425,6 +440,8 @@ app.use((err, req, res, next) => {
 
 async function start() {
   await db.ready();
+  const removed = await db.deletePunchesBefore(START_DATE);
+  if (removed) console.log(`Cleared ${removed} punches before ${START_DATE}`);
   excel.rebuild(await db.getAllPunches(), auth.entryNames()).catch((err) => {
     console.error('Initial Excel build failed:', err.message);
   });
