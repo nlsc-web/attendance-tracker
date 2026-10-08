@@ -96,7 +96,7 @@
       return `
         <button class="missing-chip" type="button" data-name="${escapeHtml(name)}">
           <span class="avatar" style="${avatarStyle(name)}">${escapeHtml(initials(name))}</span>
-          <span>${escapeHtml(name)}</span>
+          <span class="missing-chip-name">${escapeHtml(name)}</span>
           ${meta}
         </button>`;
     }).join('');
