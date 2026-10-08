@@ -266,8 +266,12 @@ input {
 }
 
 .tabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 4px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.04);
@@ -275,18 +279,21 @@ input {
 }
 
 .tab-btn {
-  flex: 1;
+  min-width: 0;
+  width: 100%;
   min-height: 44px;
   font-family: var(--sans);
-  font-size: 0.82rem;
+  font-size: clamp(0.74rem, 3.4vw, 0.92rem);
   font-weight: 600;
-  padding: 10px 8px;
+  padding: 10px 6px;
   border: none;
   background: transparent;
   color: var(--muted);
   border-radius: 11px;
   cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: background 0.18s ease, color 0.18s ease;
 }
 
@@ -978,12 +985,6 @@ body.combo-open { overflow: hidden; }
   .clock-ring { padding: 12px 16px 10px; }
 }
 
-/* Phones */
-@media (min-width: 400px) {
-  .tab-short { display: none; }
-  .tab-long { display: inline; }
-}
-
 @media (min-width: 480px) {
   :root { --pad: 20px; --radius: 22px; }
   .brand-mark { width: 48px; height: 48px; }
@@ -995,6 +996,9 @@ body.combo-open { overflow: hidden; }
   .punch-btn { min-height: 56px; font-size: 0.95rem; }
   .missed-grid { grid-template-columns: 1.2fr 1fr 1fr; }
   .missing-grid { grid-template-columns: 1fr 1fr; }
+  .tab-short { display: none; }
+  .tab-long { display: inline; }
+  .tab-btn { padding: 10px 12px; }
 }
 
 /* Tablet portrait — still stacked, a bit wider */
@@ -1004,7 +1008,7 @@ body.combo-open { overflow: hidden; }
   .hero-clock,
   .workspace { width: min(100%, 540px); }
   .clock-display { font-size: 2.15rem; }
-  .tab-btn { font-size: 0.88rem; padding: 11px 14px; }
+  .tab-btn { min-height: 48px; font-size: 0.9rem; padding: 11px 14px; }
   .combo-menu {
     position: absolute;
     left: 0;
@@ -1082,6 +1086,8 @@ body.combo-open { overflow: hidden; }
   .card { padding: 12px; }
   .card-head p { margin-bottom: 8px; }
   .brand-mark { width: 36px; height: 36px; }
+  .tabs { padding: 3px; }
+  .tab-btn { min-height: 38px; font-size: 0.78rem; padding: 6px 8px; }
 }
 
 @media (hover: none) {
