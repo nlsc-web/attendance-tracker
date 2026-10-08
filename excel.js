@@ -54,26 +54,27 @@ function syncCopyPath() {
 }
 
 async function saveWorkbook(wb, target) {
-  const tmp = `${target}.${process.pid}.tmp`;
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   await wb.xlsx.writeFile(tmp);
+  let saved = tmp;
   try {
     fs.copyFileSync(tmp, target);
+    saved = target;
     fs.unlinkSync(tmp);
   } catch (err) {
-    console.error('Excel file busy or locked. Latest copy:', tmp, err.message);
+    console.error('Excel file busy or locked. Serving latest copy:', tmp, err.message);
   }
   if (target === filePath()) {
     const extra = syncCopyPath();
     if (extra && extra !== target) {
       try {
-        const source = fs.existsSync(target) ? target : tmp;
-        if (fs.existsSync(source)) fs.copyFileSync(source, extra);
+        fs.copyFileSync(saved, extra);
       } catch (err) {
         console.error('Excel sync copy failed:', err.message);
       }
     }
   }
-  return fs.existsSync(target) ? target : tmp;
+  return saved;
 }
 
 function pad(n) {
@@ -411,12 +412,11 @@ async function writePunches(punches, names) {
 let queue = Promise.resolve();
 
 function rebuild(punches, names) {
-  queue = queue
-    .then(() => writePunches(punches, names))
-    .catch((err) => {
-      console.error('Excel write failed:', err.message);
-    });
-  return queue;
+  const job = queue.catch(() => {}).then(() => writePunches(punches, names));
+  queue = job.catch((err) => {
+    console.error('Excel write failed:', err.message);
+  });
+  return job;
 }
 
 async function rebuildMonthSummary(punches, names, prefix) {

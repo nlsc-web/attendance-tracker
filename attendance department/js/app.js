@@ -17,6 +17,7 @@
   const summaryStats = document.getElementById('summaryStats');
   const summaryMonthSelect = document.getElementById('summaryMonthSelect');
   const summaryDownload = document.getElementById('summaryDownload');
+  const excelDownload = document.getElementById('excelDownload');
   const clockTime = document.getElementById('clockTime');
   const clockDate = document.getElementById('clockDate');
   const combo = document.getElementById('employeeCombo');
@@ -399,7 +400,9 @@
   function setSummaryDownload(month) {
     const prefix = month || '';
     if (summaryDownload) {
-      summaryDownload.href = '/api/export-summary.xlsx' + (prefix ? ('?month=' + encodeURIComponent(prefix)) : '');
+      summaryDownload.href = '/api/export-summary.xlsx' +
+        (prefix ? ('?month=' + encodeURIComponent(prefix) + '&') : '?') +
+        't=' + Date.now();
     }
   }
 
@@ -774,6 +777,16 @@
   if (missingInList) missingInList.addEventListener('click', pickMissingName);
   if (missingOutList) missingOutList.addEventListener('click', pickMissingName);
 
+  if (excelDownload) {
+    excelDownload.addEventListener('click', () => {
+      excelDownload.href = '/api/export.xlsx?t=' + Date.now();
+    });
+  }
+  if (summaryDownload) {
+    summaryDownload.addEventListener('click', () => {
+      setSummaryDownload(summaryMonthSelect && summaryMonthSelect.value);
+    });
+  }
   if (summaryMonthSelect) {
     summaryMonthSelect.addEventListener('change', async () => {
       try {

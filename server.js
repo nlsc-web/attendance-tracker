@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const db = require('./db');
 const auth = require('./auth');
@@ -388,6 +389,15 @@ app.get('/api/months', asyncHandler(async (req, res) => {
   res.json({ months, current });
 }));
 
+function sendExcel(res, file, filename) {
+  if (!file || !fs.existsSync(file)) {
+    return res.status(500).json({ error: 'Could not build Excel file' });
+  }
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.download(file, filename);
+}
+
 app.get('/api/export-summary.xlsx', asyncHandler(async (req, res) => {
   const requested = String(req.query.month || monthPrefix());
   const prefix = /^\d{4}-\d{2}$/.test(requested) ? requested : monthPrefix();
@@ -396,14 +406,12 @@ app.get('/api/export-summary.xlsx', asyncHandler(async (req, res) => {
     auth.entryNames(),
     prefix
   );
-  if (!file) return res.status(500).json({ error: 'Could not build summary Excel' });
-  res.download(file, `attendance-summary-${prefix}.xlsx`);
+  sendExcel(res, file, `StaffTrack-summary-${prefix}.xlsx`);
 }));
 
 app.get('/api/export.xlsx', asyncHandler(async (req, res) => {
   const file = await excel.rebuild(await db.getAllPunches(), auth.entryNames());
-  if (!file) return res.status(500).json({ error: 'Could not build Excel file' });
-  res.download(file, 'attendance.xlsx');
+  sendExcel(res, file, `StaffTrack-${todayKey()}.xlsx`);
 }));
 
 app.get('*', (req, res) => {
