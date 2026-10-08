@@ -38,6 +38,12 @@
   const missedIn = document.getElementById('missedIn');
   const missedOut = document.getElementById('missedOut');
   const missedSaveBtn = document.getElementById('missedSaveBtn');
+  const missingDate = document.getElementById('missingDate');
+  const missingTitle = document.getElementById('missingTitle');
+  const missingInCount = document.getElementById('missingInCount');
+  const missingOutCount = document.getElementById('missingOutCount');
+  const missingInList = document.getElementById('missingInList');
+  const missingOutList = document.getElementById('missingOutList');
 
   let employeeNames = EMPLOYEES.slice();
   let highlightIndex = 0;
@@ -54,6 +60,83 @@
     missedDate.max = today;
     missedDate.min = localDateKey(min);
     if (!missedDate.value) missedDate.value = today;
+  }
+  function setupMissingDate() {
+    if (!missingDate) return;
+    const today = localDateKey(new Date());
+    const min = new Date();
+    min.setDate(min.getDate() - 90);
+    missingDate.max = today;
+    missingDate.min = localDateKey(min);
+    if (!missingDate.value) missingDate.value = today;
+  }
+  function missingDayLabel(value) {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'today';
+    if (value === localDateKey(new Date())) return 'today';
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+      day: 'numeric', month: 'short'
+    });
+  }
+  function punchForName(records, name) {
+    const key = String(name || '').toLowerCase();
+    return (records || []).find((row) => String(row.name || '').toLowerCase() === key) || null;
+  }
+  function renderNameChips(target, names, records, kind) {
+    if (!target) return;
+    if (!names.length) {
+      target.innerHTML = `<p class="missing-empty">${kind === 'in' ? 'Everyone has checked in.' : 'Everyone who checked in has checked out.'}</p>`;
+      return;
+    }
+    target.innerHTML = names.map((name) => {
+      const punch = punchForName(records, name);
+      const meta = kind === 'out' && punch && punch.inTime
+        ? `<span class="missing-chip-meta">IN ${escapeHtml(String(punch.inTime).slice(0, 5))}</span>`
+        : '';
+      return `
+        <button class="missing-chip" type="button" data-name="${escapeHtml(name)}">
+          <span class="avatar" style="${avatarStyle(name)}">${escapeHtml(initials(name))}</span>
+          <span>${escapeHtml(name)}</span>
+          ${meta}
+        </button>`;
+    }).join('');
+  }
+  function renderMissing(records) {
+    const date = missingDate && missingDate.value ? missingDate.value : localDateKey(new Date());
+    if (missingTitle) missingTitle.textContent = 'Not marked ' + missingDayLabel(date);
+    const listed = employeeNames.slice();
+    const missingIn = listed.filter((name) => {
+      const punch = punchForName(records, name);
+      return !punch || !punch.inTime;
+    });
+    const listedOut = listed.filter((name) => {
+      const punch = punchForName(records, name);
+      return punch && punch.inTime && !punch.outTime;
+    });
+    const extrasOut = (records || [])
+      .filter((row) => row.inTime && !row.outTime)
+      .map((row) => row.name)
+      .filter((name) => !listed.some((item) => item.toLowerCase() === String(name || '').toLowerCase()));
+    const missingOut = listedOut.concat(extrasOut);
+    if (missingInCount) missingInCount.textContent = String(missingIn.length);
+    if (missingOutCount) missingOutCount.textContent = String(missingOut.length);
+    renderNameChips(missingInList, missingIn, records, 'in');
+    renderNameChips(missingOutList, missingOut, records, 'out');
+  }
+  async function refreshMissing() {
+    if (!missingInList && !missingOutList) return;
+    setupMissingDate();
+    const date = missingDate && missingDate.value ? missingDate.value : localDateKey(new Date());
+    try {
+      const records = await apiGet('/api/punches?date=' + encodeURIComponent(date));
+      renderMissing(records);
+    } catch (e) {
+      if (missingInCount) missingInCount.textContent = '0';
+      if (missingOutCount) missingOutCount.textContent = '0';
+      const fail = '<p class="missing-empty">Could not load this day.</p>';
+      if (missingInList) missingInList.innerHTML = fail;
+      if (missingOutList) missingOutList.innerHTML = fail;
+    }
   }
   function formatLate(minutes) {
     const total = Math.max(0, Math.round(Number(minutes) || 0));
@@ -232,6 +315,7 @@
     employeeSelect.value = current && list.includes(current) ? current : '';
     syncTrigger();
     renderComboList();
+    refreshMissing();
   }
 
   fillEmployees(EMPLOYEES);
@@ -366,6 +450,13 @@
     try {
       const records = await apiGet('/api/punches');
       renderFeed(records);
+      const today = localDateKey(new Date());
+      if (missingDate && missingDate.value && missingDate.value !== today) {
+        await refreshMissing();
+      } else {
+        setupMissingDate();
+        renderMissing(records);
+      }
     } catch (e) {
       feedCount.textContent = '0';
       feedList.innerHTML = '<div class="empty-note">Could not load punches.</div>';
@@ -641,6 +732,21 @@
     refreshFeed();
     refreshCorrection();
   })();
+
+  setupMissingDate();
+  if (missingDate) {
+    missingDate.addEventListener('change', refreshMissing);
+  }
+  function pickMissingName(event) {
+    const chip = event.target.closest('.missing-chip');
+    if (!chip) return;
+    chooseName(chip.dataset.name);
+    if (missedDate && missingDate && missingDate.value && !missedPanel.hidden) {
+      missedDate.value = missingDate.value;
+    }
+  }
+  if (missingInList) missingInList.addEventListener('click', pickMissingName);
+  if (missingOutList) missingOutList.addEventListener('click', pickMissingName);
 
   if (summaryMonthSelect) {
     summaryMonthSelect.addEventListener('change', async () => {

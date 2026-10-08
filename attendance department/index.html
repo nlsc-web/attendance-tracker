@@ -151,6 +151,30 @@
           </div>
         </div>
       </section>
+
+      <section class="missing">
+        <div class="feed-head">
+          <h2 id="missingTitle">Not marked today</h2>
+          <label class="sr-only" for="missingDate">Date</label>
+          <input class="missing-date" id="missingDate" type="date">
+        </div>
+        <div class="missing-grid">
+          <div class="missing-col">
+            <div class="missing-col-head">
+              <span>No check-in</span>
+              <span class="count-pill warn-pill" id="missingInCount">0</span>
+            </div>
+            <div id="missingInList"></div>
+          </div>
+          <div class="missing-col">
+            <div class="missing-col-head">
+              <span>No check-out</span>
+              <span class="count-pill warn-pill" id="missingOutCount">0</span>
+            </div>
+            <div id="missingOutList"></div>
+          </div>
+        </div>
+      </section>
     </div>
 
     <div class="panel is-hidden" id="summaryPanel">
