@@ -14,7 +14,7 @@ const SHIFT_HOUR = 8;
 const SHIFT_MIN = 30;
 const START_DATE = '2026-10-08';
 const LATE_HOUR = 8;
-const LATE_MIN = 35;
+const LATE_MIN = 36;
 
 app.use(express.json({ limit: '32kb' }));
 app.use(express.static(STATIC_DIR, {
@@ -71,11 +71,11 @@ function monthPrefix() {
 }
 
 function lateInfo(timeStr) {
-  const [h, m, s] = String(timeStr).split(':').map((x) => Number(x) || 0);
-  const punchSeconds = h * 3600 + m * 60 + s;
-  const cutoffSeconds = LATE_HOUR * 3600 + LATE_MIN * 60;
-  const late = punchSeconds > cutoffSeconds;
-  const lateMinutes = late ? Math.round((punchSeconds - cutoffSeconds) / 60) : 0;
+  const [h, m] = String(timeStr).split(':').map((x) => Number(x) || 0);
+  const punchMin = h * 60 + m;
+  const lateStartMin = LATE_HOUR * 60 + LATE_MIN;
+  const late = punchMin >= lateStartMin;
+  const lateMinutes = late ? punchMin - (LATE_HOUR * 60 + LATE_MIN - 1) : 0;
   return { late, lateMinutes };
 }
 
@@ -268,6 +268,10 @@ app.get('/api/punches', asyncHandler(async (req, res) => {
   res.json(await db.getPunchesByDate(date));
 }));
 
+function openCheckoutMessage(open) {
+  return `Cannot check in. Check-out is required first — no check-out on ${open.date}. Use office login to add that check-out.`;
+}
+
 app.post('/api/punches/checkin', asyncHandler(async (req, res) => {
   const name = staffNameFromBody(req);
   if (!name) return res.status(400).json({ error: 'Select a valid name.' });
@@ -276,6 +280,10 @@ app.post('/api/punches/checkin', asyncHandler(async (req, res) => {
   const existing = await db.getPunchByDateName(date, name);
   if (existing && existing.inTime) {
     return res.status(409).json({ error: 'Already checked in today.' });
+  }
+  const open = await db.getOpenPunch(name);
+  if (open && open.date < date) {
+    return res.status(409).json({ error: openCheckoutMessage(open) });
   }
 
   const { late, lateMinutes } = lateInfo(inTime);
@@ -311,6 +319,12 @@ app.post('/api/punches/checkout', asyncHandler(async (req, res) => {
   const date = todayKey();
   const existing = await db.getPunchByDateName(date, name);
   if (!existing || !existing.inTime) {
+    const open = await db.getOpenPunch(name);
+    if (open && open.date < date) {
+      return res.status(409).json({
+        error: `No check-in today. Check out first — no check-out on ${open.date}. Use office login to add it.`
+      });
+    }
     return res.status(409).json({ error: 'Check in first today.' });
   }
   if (existing.outTime) {
@@ -352,6 +366,13 @@ app.post('/api/punches/missed', auth.requireCorrect, asyncHandler(async (req, re
   const existing = await db.getPunchByDateName(date, name);
   if (!existing && !inTime) {
     return res.status(400).json({ error: 'Enter the check-in time for that day.' });
+  }
+  const addingNewIn = Boolean(inTime && !(existing && existing.inTime));
+  if (addingNewIn) {
+    const open = await db.getOpenPunch(name);
+    if (open && open.date < date) {
+      return res.status(409).json({ error: openCheckoutMessage(open) });
+    }
   }
   if (
     existing &&

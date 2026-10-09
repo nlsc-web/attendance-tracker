@@ -76,6 +76,18 @@ function createSqliteStore() {
         db.prepare('SELECT * FROM punches WHERE date = ? AND name = ?').get(date, name)
       );
     },
+    async getOpenPunch(name) {
+      return rowToPunch(
+        db.prepare(`
+          SELECT * FROM punches
+          WHERE lower(name) = lower(?)
+            AND inTime != ''
+            AND (outTime IS NULL OR outTime = '')
+          ORDER BY date DESC
+          LIMIT 1
+        `).get(name)
+      );
+    },
     async getPunchById(id) {
       return rowToPunch(db.prepare('SELECT * FROM punches WHERE id = ?').get(id));
     },
@@ -183,6 +195,18 @@ async function createPostgresStore(connectionString) {
       const res = await pool.query(
         'SELECT * FROM punches WHERE date = $1 AND name = $2',
         [date, name]
+      );
+      return rowToPunch(res.rows[0]);
+    },
+    async getOpenPunch(name) {
+      const res = await pool.query(
+        `SELECT * FROM punches
+         WHERE lower(name) = lower($1)
+           AND "inTime" != ''
+           AND ("outTime" IS NULL OR "outTime" = '')
+         ORDER BY date DESC
+         LIMIT 1`,
+        [name]
       );
       return rowToPunch(res.rows[0]);
     },
@@ -294,6 +318,7 @@ module.exports = {
   ready: () => getStore(),
   getPunchesByDate: async (date) => (await getStore()).getPunchesByDate(date),
   getPunchByDateName: async (date, name) => (await getStore()).getPunchByDateName(date, name),
+  getOpenPunch: async (name) => (await getStore()).getOpenPunch(name),
   getPunchById: async (id) => (await getStore()).getPunchById(id),
   deletePunchById: async (id) => (await getStore()).deletePunchById(id),
   getPunchesByMonth: async (prefix) => (await getStore()).getPunchesByMonth(prefix),

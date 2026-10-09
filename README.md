@@ -10,7 +10,7 @@ Live app: [https://attendance-tracker-d48e.onrender.com](https://attendance-trac
 
 1. Open the **live URL** in Chrome (office PC, tablet, or phone).
 2. Chrome menu → **Install StaffTrack** (or the install icon in the address bar). A desktop shortcut appears.
-3. Select your name, then Check In or Check Out. Shift starts 8:30 AM; late after 8:35 AM (Asia/Colombo).
+3. Select your name, then Check In or Check Out. Shift starts 8:30 AM. On time until 8:35 AM; late from 8:36 AM (Asia/Colombo).
 4. **Download Excel** builds the workbook from the database (not from this laptop’s `data` folder).
 5. Month end: **Monthly summary** → pick the month → **Download summary**.
 
